@@ -13,7 +13,7 @@ namespace BirthdayExtractor
         public int MinAge { get; set; } = 3;
         public int MaxAge { get; set; } = 14;
 
-        public bool DefaultWriteCsv { get; set; } = true;
+        public bool DefaultWriteCsv { get; set; } = false;
         public bool DefaultWriteXlsx { get; set; } = true;
 
         // New property
@@ -29,7 +29,7 @@ namespace BirthdayExtractor
             => s1 <= e2 && s2 <= e1;
     
         // New: enable libphonenumber for all numbers
-        public bool UseLibPhoneNumber { get; set; } = false;
+        public bool UseLibPhoneNumber { get; set; } = true;
 
         // Default country for parsing ambiguous numbers (e.g. "050...")
         public string DefaultRegion { get; set; } = "AE";

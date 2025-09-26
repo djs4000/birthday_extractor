@@ -18,14 +18,14 @@ namespace BirthdayExtractor
         public DateTime End { get; set; }
         public int MinAge { get; set; } = 3;
         public int MaxAge { get; set; } = 14;
-        public bool WriteCsv { get; set; } = true;
+        public bool WriteCsv { get; set; } = false;
         public bool WriteXlsx { get; set; } = true;
         public string OutDir { get; set; } = string.Empty;
 
         public IProgress<int>? Progress { get; set; }
         public Action<string>? Log { get; set; }
         public CancellationToken Cancellation { get; set; }
-        public bool UseLibPhoneNumber { get; set; } = false;
+        public bool UseLibPhoneNumber { get; set; } = true;
         public string DefaultRegion { get; set; } = "AE";
     }
 
