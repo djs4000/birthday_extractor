@@ -33,12 +33,14 @@ namespace BirthdayExtractor
             MaximizeBox = false; MinimizeBox = false;
             var y = 20; // Layout cursor to stack controls vertically
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Default start offset (days from today):" });
+
             numOffset = new NumericUpDown { Left = 260, Top = y - 2, Width = 200, Minimum = 0, Maximum = 365, Value = _cfg.DefaultStartOffsetDays }; y += 30;
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Default window length (days):" });
             numWindow = new NumericUpDown { Left = 260, Top = y - 2, Width = 200, Minimum = 1, Maximum = 60, Value = _cfg.DefaultWindowDays }; y += 30;
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Age range (min / max):" });
             numMinAge = new NumericUpDown { Left = 260, Top = y - 2, Width = 90, Minimum = 0, Maximum = 120, Value = _cfg.MinAge };
             numMaxAge = new NumericUpDown { Left = 370, Top = y - 2, Width = 90, Minimum = 0, Maximum = 120, Value = _cfg.MaxAge }; y += 30;
+
             chkCsv  = new CheckBox { Left = 260, Top = y, Width = 80, Text = "CSV", Checked = _cfg.DefaultWriteCsv };
             chkXlsx = new CheckBox { Left = 340, Top = y, Width = 80, Text = "XLSX", Checked = _cfg.DefaultWriteXlsx }; y += 30;
             Controls.Add(chkCsv);
@@ -53,9 +55,11 @@ namespace BirthdayExtractor
             Controls.Add(chkUseLibPhone);
             y += 35;
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Webhook URL (future):" });
+
             txtWebhookUrl = new TextBox { Left = 260, Top = y - 4, Width = 200, Text = _cfg.WebhookUrl ?? "" }; y += 30;
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Webhook Auth header (future):" });
             txtWebhookAuth = new TextBox { Left = 260, Top = y - 4, Width = 200, Text = _cfg.WebhookAuthHeader ?? "" }; y += 40;
+
             btnSave = new Button { Left = 260, Top = y, Width = 90, Text = "Save" };
             btnCancel = new Button { Left = 370, Top = y, Width = 90, Text = "Cancel" };
             btnSave.Click += (s, e) => SaveAndClose();
