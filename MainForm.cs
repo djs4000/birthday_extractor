@@ -127,13 +127,76 @@ namespace BirthdayExtractor
         /// </summary>
         private void ShowHistory()
         {
-            if (_cfg.History.Count == 0) { MessageBox.Show(this, "No processed windows logged yet."); return; }
-            var lines = _cfg.History
-                .OrderByDescending(h => h.ProcessedAt)
-                .Select(h => $"{h.ProcessedAt:yyyy-MM-dd HH:mm}  {h.Start:yyyy-MM-dd} → {h.End:yyyy-MM-dd}  rows={h.RowCount}  csv={h.CsvName}")
-                .ToArray();
-            MessageBox.Show(this, string.Join(Environment.NewLine, lines), "Processed History",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (_cfg.History.Count == 0)
+            {
+                MessageBox.Show(this, "No processed windows logged yet.");
+                return;
+            }
+
+            using var dlg = new Form
+            {
+                Text = "Processed History",
+                StartPosition = FormStartPosition.CenterParent,
+                Width = 720,
+                Height = 420,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ShowIcon = false
+            };
+
+            var lblSummary = new Label
+            {
+                Dock = DockStyle.Top,
+                Height = 28,
+                TextAlign = System.Drawing.ContentAlignment.MiddleLeft,
+                Padding = new Padding(10, 0, 10, 0),
+                Text = $"Showing {_cfg.History.Count} processed window(s)."
+            };
+
+            var list = new ListView
+            {
+                Dock = DockStyle.Fill,
+                View = View.Details,
+                FullRowSelect = true,
+                GridLines = true,
+                HideSelection = false
+            };
+
+            list.Columns.Add("Processed", 140);
+            list.Columns.Add("Start", 100);
+            list.Columns.Add("End", 100);
+            list.Columns.Add("Rows", 80, HorizontalAlignment.Right);
+            list.Columns.Add("CSV File", 260);
+
+            foreach (var entry in _cfg.History.OrderByDescending(h => h.ProcessedAt))
+            {
+                var item = new ListViewItem(entry.ProcessedAt.ToString("yyyy-MM-dd HH:mm"));
+                item.SubItems.Add(entry.Start.ToString("yyyy-MM-dd"));
+                item.SubItems.Add(entry.End.ToString("yyyy-MM-dd"));
+                item.SubItems.Add(entry.RowCount.ToString());
+                item.SubItems.Add(entry.CsvName ?? string.Empty);
+                list.Items.Add(item);
+            }
+
+            list.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
+            // Ensure the Processed column always has enough space for the header text
+            list.Columns[0].Width = Math.Max(list.Columns[0].Width, 140);
+
+            var btnClose = new Button
+            {
+                Text = "Close",
+                Dock = DockStyle.Bottom,
+                Height = 34,
+                DialogResult = DialogResult.OK
+            };
+
+            dlg.AcceptButton = btnClose;
+            dlg.CancelButton = btnClose;
+            dlg.Controls.Add(list);
+            dlg.Controls.Add(btnClose);
+            dlg.Controls.Add(lblSummary);
+
+            dlg.ShowDialog(this);
         }
         /// <summary>
         /// Prompts the user to choose the source CSV report and remembers the selection folder.
