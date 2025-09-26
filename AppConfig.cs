@@ -38,6 +38,16 @@ namespace BirthdayExtractor
     /// </summary>
     public bool DefaultWriteXlsx { get; set; } = true;
 
+    /// <summary>
+    /// When true the application will check GitHub for a newer build during startup.
+    /// </summary>
+    public bool EnableUpdateChecks { get; set; } = true;
+
+    /// <summary>
+    /// Optional personal access token used when querying private GitHub releases.
+    /// </summary>
+    public string? GitHubToken { get; set; }
+
         // New property
     /// <summary>
     /// Remembers the last CSV directory to improve the browse UX.
