@@ -31,7 +31,7 @@ namespace BirthdayExtractor
             if (client is not null && !string.IsNullOrWhiteSpace(personalAccessToken))
             {
                 client.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", personalAccessToken);
+                    new AuthenticationHeaderValue("token", personalAccessToken);
             }
         }
 
@@ -183,7 +183,7 @@ namespace BirthdayExtractor
             if (!string.IsNullOrWhiteSpace(personalAccessToken))
             {
                 client.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", personalAccessToken);
+                    new AuthenticationHeaderValue("token", personalAccessToken);
             }
 
             return client;
