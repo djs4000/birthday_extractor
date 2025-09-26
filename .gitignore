@@ -1,0 +1,12 @@
+*.sln
+
+# Ignore a specific directory
+/bin/
+/obj/
+
+# Ignore a specific file
+Birthday_Extractor.code-workspace
+
+# Ignore all files in a directory but re-include a specific one
+/temp/*
+!/temp/important.txt
