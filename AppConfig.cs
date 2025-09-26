@@ -28,6 +28,7 @@ namespace BirthdayExtractor
     /// </summary>
     public int MaxAge { get; set; } = 14;
 
+
     /// <summary>
     /// Whether CSV export should be ticked on launch.
     /// </summary>
@@ -62,6 +63,7 @@ namespace BirthdayExtractor
             => s1 <= e2 && s2 <= e1;
     
         // New: enable libphonenumber for all numbers
+
     /// <summary>
     /// Enables libphonenumber-based validation when normalizing phones.
     /// </summary>

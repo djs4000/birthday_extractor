@@ -35,6 +35,7 @@ namespace BirthdayExtractor
         /// Maximum age (turning) that still counts a child for celebrations.
         /// </summary>
         public int MaxAge { get; set; } = 14;
+      
         /// <summary>
         /// When true, a filtered CSV export will be produced.
         /// </summary>
@@ -59,6 +60,7 @@ namespace BirthdayExtractor
         /// Cancellation token propagated from the UI to abort work gracefully.
         /// </summary>
         public CancellationToken Cancellation { get; set; }
+
         /// <summary>
         /// Enables libphonenumber validation/normalization when available.
         /// </summary>
@@ -66,6 +68,7 @@ namespace BirthdayExtractor
         /// <summary>
         /// Region code supplied to libphonenumber for ambiguous numbers.
         /// </summary>
+
         public string DefaultRegion { get; set; } = "AE";
     }
     /// <summary>
