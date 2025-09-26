@@ -168,19 +168,55 @@ namespace BirthdayExtractor
             list.Columns.Add("Rows", 80, HorizontalAlignment.Right);
             list.Columns.Add("CSV File", 260);
 
-            foreach (var entry in _cfg.History.OrderByDescending(h => h.ProcessedAt))
+            void ReloadHistory()
             {
-                var item = new ListViewItem(entry.ProcessedAt.ToString("yyyy-MM-dd HH:mm"));
-                item.SubItems.Add(entry.Start.ToString("yyyy-MM-dd"));
-                item.SubItems.Add(entry.End.ToString("yyyy-MM-dd"));
-                item.SubItems.Add(entry.RowCount.ToString());
-                item.SubItems.Add(entry.CsvName ?? string.Empty);
-                list.Items.Add(item);
+                list.BeginUpdate();
+                list.Items.Clear();
+
+                foreach (var entry in _cfg.History.OrderByDescending(h => h.ProcessedAt))
+                {
+                    var item = new ListViewItem(entry.ProcessedAt.ToString("yyyy-MM-dd HH:mm"))
+                    {
+                        Tag = entry
+                    };
+                    item.SubItems.Add(entry.Start.ToString("yyyy-MM-dd"));
+                    item.SubItems.Add(entry.End.ToString("yyyy-MM-dd"));
+                    item.SubItems.Add(entry.RowCount.ToString());
+                    item.SubItems.Add(entry.CsvName ?? string.Empty);
+                    list.Items.Add(item);
+                }
+
+                list.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
+                // Ensure the Processed column always has enough space for the header text
+                list.Columns[0].Width = Math.Max(list.Columns[0].Width, 140);
+
+                lblSummary.Text = $"Showing {_cfg.History.Count} processed window(s).";
+                list.EndUpdate();
             }
 
-            list.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
-            // Ensure the Processed column always has enough space for the header text
-            list.Columns[0].Width = Math.Max(list.Columns[0].Width, 140);
+            ReloadHistory();
+
+            list.MouseClick += (s, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                if ((ModifierKeys & Keys.Control) != Keys.Control) return;
+                if ((ModifierKeys & Keys.Shift) != Keys.Shift) return;
+
+                var hit = list.GetItemAt(e.X, e.Y);
+                if (hit is null || hit.Tag is not ProcessedWindow selected) return;
+
+                var msg =
+                    $"Delete the history entry for {selected.Start:yyyy-MM-dd} .. {selected.End:yyyy-MM-dd}?\n\n" +
+                    $"Processed at {selected.ProcessedAt:yyyy-MM-dd HH:mm}.";
+
+                var confirm = MessageBox.Show(dlg, msg, "Delete history entry", MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                if (confirm != DialogResult.Yes) return;
+
+                _cfg.History.Remove(selected);
+                ConfigStore.Save(_cfg);
+                ReloadHistory();
+            };
 
             var btnClose = new Button
             {
