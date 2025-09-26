@@ -49,7 +49,7 @@ namespace BirthdayExtractor
             // sanity defaults if someone hand-edited config
             if (_cfg.DefaultWindowDays <= 0) _cfg.DefaultWindowDays = 7;
             // 2) Form shell: establish window chrome before wiring controls
-            Text = "Birthday Extractor v0.5";
+            Text = "Birthday Extractor v0.52";
             Width = 820; Height = 600;
             StartPosition = FormStartPosition.CenterScreen;
             // 3) Menu (Dock Top) for settings + history shortcuts
