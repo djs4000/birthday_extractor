@@ -9,7 +9,8 @@
 
     <!-- Optional single-file publish -->
     <PublishSingleFile>true</PublishSingleFile>
-    <PublishTrimmed>true</PublishTrimmed>
+    <PublishTrimmed>true</PublishTrimmed> <!-- ## Cant trim if using windows forms-->
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <InvariantGlobalization>true</InvariantGlobalization>
