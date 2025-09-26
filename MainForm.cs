@@ -3,11 +3,15 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-
 namespace BirthdayExtractor
 {
+    /// <summary>
+    /// Primary UI surface for configuring and running birthday extraction jobs.
+    /// Hosts file selectors, date pickers, progress feedback, and history entry points.
+    /// </summary>
     public class MainForm : Form
     {
+        // --- UI controls ---
         private Panel content = null!;
         private TextBox txtCsv = null!;
         private Button btnBrowseCsv = null!;
@@ -21,18 +25,19 @@ namespace BirthdayExtractor
         private Button btnCancel = null!;
         private ProgressBar progress = null!;
         private TextBox txtLog = null!;
-
+        // --- Processing state & config ---
         private readonly Processing _proc = new();
         private System.Threading.CancellationTokenSource? _cts;
         private AppConfig _cfg = null!;
         private MenuStrip menu = null!;
         private ToolStripMenuItem miSettings = null!;
         private ToolStripMenuItem miHistory  = null!;
-
-
+        /// <summary>
+        /// Creates the main window, loads persisted configuration, and wires up all controls/events.
+        /// </summary>
         public MainForm()
         {
-            // 1) Load config FIRST, with a safe fallback
+            // 1) Load config FIRST, with a safe fallback so layout decisions can use persisted defaults
             try
             {
                 _cfg = ConfigStore.LoadOrCreate() ?? new AppConfig();
@@ -43,13 +48,11 @@ namespace BirthdayExtractor
             }
             // sanity defaults if someone hand-edited config
             if (_cfg.DefaultWindowDays <= 0) _cfg.DefaultWindowDays = 7;
-
-            // 2) Form shell
+            // 2) Form shell: establish window chrome before wiring controls
             Text = "Birthday Extractor v0.5";
             Width = 820; Height = 600;
             StartPosition = FormStartPosition.CenterScreen;
-
-            // 3) Menu (Dock Top)
+            // 3) Menu (Dock Top) for settings + history shortcuts
             menu = new MenuStrip();
             miSettings = new ToolStripMenuItem("Settings...");
             miHistory  = new ToolStripMenuItem("View Processed History");
@@ -60,39 +63,30 @@ namespace BirthdayExtractor
             menu.Dock = DockStyle.Top;
             MainMenuStrip = menu;
             Controls.Add(menu);
-
             // 4) Content panel (Dock Fill) – all inputs go here
             content = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10) };
             Controls.Add(content);
-
-            // 5) Build your controls (same as before)
+            // 5) Build your controls (labels, inputs, and action buttons)
             var lblCsv = new Label { Left = 20, Top = 40, Width = 120, Text = "CSV File:" };
             txtCsv = new TextBox { Left = 140, Top = 36, Width = 540 };
             btnBrowseCsv = new Button { Left = 690, Top = 34, Width = 90, Text = "Browse..." };
             btnBrowseCsv.Click += (s, e) => BrowseCsv();
-
             var lblStart = new Label { Left = 20, Top = 70, Width = 120, Text = "Start Date:" };
             dtStart = new DateTimePicker { Left = 140, Top = 66, Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
-
             dtEnd = new DateTimePicker { Left = 440, Top = 66, Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
             var lblEnd = new Label { Left = 360, Top = 70, Width = 60, Text = "End Date:" };
-
             chkCsv = new CheckBox { Left = 140, Top = 96, Width = 80, Text = "CSV" };
             chkXlsx = new CheckBox { Left = 230, Top = 96, Width = 80, Text = "XLSX" };
-
             var lblOut = new Label { Left = 20, Top = 136, Width = 120, Text = "Output Folder:" };
             txtOutDir = new TextBox { Left = 140, Top = 132, Width = 540 };
             btnBrowseOut = new Button { Left = 690, Top = 130, Width = 90, Text = "Browse..." };
             btnBrowseOut.Click += (s, e) => BrowseOutDir();
-
             btnRun = new Button { Left = 140, Top = 172, Width = 120, Text = "Run" };
             btnCancel = new Button { Left = 270, Top = 172, Width = 120, Text = "Cancel", Enabled = false };
             btnRun.Click += async (s, e) => await RunAsync();
             btnCancel.Click += (s, e) => _cts?.Cancel();
-
             progress = new ProgressBar { Left = 20, Top = 212, Width = 760, Height = 18, Style = ProgressBarStyle.Continuous, Minimum = 0, Maximum = 100, Value = 0 };
             txtLog = new TextBox { Left = 20, Top = 242, Width = 760, Height = 300, Multiline = true, ScrollBars = ScrollBars.Vertical, ReadOnly = true };
-
             // 6) Add to content panel (not the form)
             content.Controls.AddRange(new Control[] {
                 lblCsv, txtCsv, btnBrowseCsv,
@@ -103,18 +97,18 @@ namespace BirthdayExtractor
                 btnRun, btnCancel,
                 progress, txtLog
             });
-
-            // 7) Defaults
+            // 7) Defaults pulled from config to pre-populate the form
             dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
             dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
             chkCsv.Checked  = _cfg.DefaultWriteCsv;
             chkXlsx.Checked = _cfg.DefaultWriteXlsx;
-
             dtStart.ValueChanged += (s, e) => dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
-
             txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
             SyncDefaultOutDir();
         }
+        /// <summary>
+        /// Opens the secondary settings dialog and reapplies any updated defaults.
+        /// </summary>
         private void OpenSettings()
         {
             using var dlg = new SettingsForm(_cfg);
@@ -128,7 +122,9 @@ namespace BirthdayExtractor
                 Log("Settings saved.");
             }
         }
-
+        /// <summary>
+        /// Displays a summary of the previously processed date windows stored in configuration.
+        /// </summary>
         private void ShowHistory()
         {
             if (_cfg.History.Count == 0) { MessageBox.Show(this, "No processed windows logged yet."); return; }
@@ -139,7 +135,9 @@ namespace BirthdayExtractor
             MessageBox.Show(this, string.Join(Environment.NewLine, lines), "Processed History",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-
+        /// <summary>
+        /// Prompts the user to choose the source CSV report and remembers the selection folder.
+        /// </summary>
         private void BrowseCsv()
         {
             using var ofd = new OpenFileDialog
@@ -151,45 +149,52 @@ namespace BirthdayExtractor
                     ? _cfg.LastCsvFolder
                     : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
             };
-
             if (ofd.ShowDialog() == DialogResult.OK)
             {
                 txtCsv.Text = ofd.FileName;
-
                 // Save the folder back into config
                 _cfg.LastCsvFolder = Path.GetDirectoryName(ofd.FileName);
                 ConfigStore.Save(_cfg);
-
                 SyncDefaultOutDir();
             }
         }
-
+        /// <summary>
+        /// Allows the user to pick where generated exports should be written.
+        /// </summary>
         private void BrowseOutDir()
         {
             using var fbd = new FolderBrowserDialog { Description = "Select output folder" };
             if (Directory.Exists(txtOutDir.Text)) fbd.SelectedPath = txtOutDir.Text;
             if (fbd.ShowDialog(this) == DialogResult.OK) txtOutDir.Text = fbd.SelectedPath;
         }
-
+        /// <summary>
+        /// Keeps the output directory in sync with the selected CSV location when possible.
+        /// </summary>
         private void SyncDefaultOutDir()
         {
             txtOutDir.Text = (!string.IsNullOrWhiteSpace(txtCsv.Text) && File.Exists(txtCsv.Text))
                 ? (Path.GetDirectoryName(txtCsv.Text) ?? Environment.CurrentDirectory)
                 : Environment.CurrentDirectory;
         }
-
+        /// <summary>
+        /// Thread-safe log helper that timestamps status messages in the UI.
+        /// </summary>
         private void Log(string message)
         {
             if (txtLog.InvokeRequired) { txtLog.Invoke(new Action<string>(Log), message); return; }
             txtLog.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
         }
-
+        /// <summary>
+        /// Safely updates the progress bar from background threads.
+        /// </summary>
         private void SetProgress(int percent)
         {
             if (progress.InvokeRequired) { progress.Invoke(new Action<int>(SetProgress), percent); return; }
             progress.Value = Math.Max(0, Math.Min(100, percent));
         }
-
+        /// <summary>
+        /// Validates user input and orchestrates the asynchronous extraction pipeline.
+        /// </summary>
         private async Task RunAsync()
         {
             var csv = txtCsv.Text.Trim();
@@ -198,7 +203,6 @@ namespace BirthdayExtractor
             var end = dtEnd.Value.Date;
             if (string.IsNullOrWhiteSpace(txtOutDir.Text)) txtOutDir.Text = Path.GetDirectoryName(csv) ?? Environment.CurrentDirectory;
             var outDir = txtOutDir.Text.Trim();
-
             // Warn on overlapping previously-processed date ranges
             foreach (var h in _cfg.History)
             {
@@ -212,14 +216,11 @@ namespace BirthdayExtractor
                     break; // warn once
                 }
             }
-
             Directory.CreateDirectory(outDir);
             btnRun.Enabled = false; btnCancel.Enabled = true; txtLog.Clear(); SetProgress(0);
-            Log("Started...");
-
+            Log("Started..."); // push initial marker before heavy lifting begins
             _cts = new System.Threading.CancellationTokenSource();
             var progressCb = new Progress<int>(p => SetProgress(p));
-
             try
             {
                 var result = await Task.Run(() => _proc.Process(new ProcOptions
@@ -238,11 +239,9 @@ namespace BirthdayExtractor
                     Log = Log,
                     Cancellation = _cts.Token
                 }), _cts.Token);
-
                 Log($"Done. Kept {result.KeptCount} rows.");
                 if (result.CsvPath is not null) Log($"CSV : {result.CsvPath}");
                 if (result.XlsxPath is not null) Log($"XLSX: {result.XlsxPath}");
-
                 // ---- append to history ----
                 try
                 {
@@ -264,10 +263,8 @@ namespace BirthdayExtractor
                     Log("WARN: Failed to log processed window: " + hex.Message);
                 }
                 // ---------------------------
-
                 SetProgress(100);
             }
-
             catch (OperationCanceledException)
             {
                 Log("Cancelled by user.");

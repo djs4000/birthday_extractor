@@ -6,46 +6,109 @@ using System.Text.Json;
 
 namespace BirthdayExtractor
 {
+    /// <summary>
+    /// Stores persisted application preferences and run history.
+    /// </summary>
     public sealed class AppConfig
     {
-        public int DefaultStartOffsetDays { get; set; } = 28;   // e.g., today + 28
-        public int DefaultWindowDays { get; set; } = 7;     // inclusive window (start .. start+days-1)
-        public int MinAge { get; set; } = 3;
-        public int MaxAge { get; set; } = 14;
+    /// <summary>
+    /// Offset (in days from today) used when pre-filling the start date picker.
+    /// </summary>
+    public int DefaultStartOffsetDays { get; set; } = 28;   // e.g., today + 28
+    /// <summary>
+    /// How many days to include in the reporting window by default.
+    /// </summary>
+    public int DefaultWindowDays { get; set; } = 7;     // inclusive window (start .. start+days-1)
+    /// <summary>
+    /// Smallest turning age that will be considered a candidate.
+    /// </summary>
+    public int MinAge { get; set; } = 3;
+    /// <summary>
+    /// Oldest turning age that should remain in the birthday report.
+    /// </summary>
+    public int MaxAge { get; set; } = 14;
 
-        public bool DefaultWriteCsv { get; set; } = true;
-        public bool DefaultWriteXlsx { get; set; } = true;
+    /// <summary>
+    /// Whether CSV export should be ticked on launch.
+    /// </summary>
+    public bool DefaultWriteCsv { get; set; } = true;
+    /// <summary>
+    /// Whether XLSX export should be ticked on launch.
+    /// </summary>
+    public bool DefaultWriteXlsx { get; set; } = true;
 
         // New property
-        public string? LastCsvFolder { get; set; }
+    /// <summary>
+    /// Remembers the last CSV directory to improve the browse UX.
+    /// </summary>
+    public string? LastCsvFolder { get; set; }
 
         // Future use for ERPNext webhook
-        public string? WebhookUrl { get; set; }
-        public string? WebhookAuthHeader { get; set; }
+    /// <summary>
+    /// Future integration endpoint for ERPNext webhook pushes.
+    /// </summary>
+    public string? WebhookUrl { get; set; }
+    /// <summary>
+    /// Optional authorization header value for webhook calls.
+    /// </summary>
+    public string? WebhookAuthHeader { get; set; }
 
-        public List<ProcessedWindow> History { get; set; } = new();
+    /// <summary>
+    /// Log of previously processed windows to warn about duplicates.
+    /// </summary>
+    public List<ProcessedWindow> History { get; set; } = new();
 
         public static bool WindowsOverlap(DateTime s1, DateTime e1, DateTime s2, DateTime e2)
             => s1 <= e2 && s2 <= e1;
     
         // New: enable libphonenumber for all numbers
-        public bool UseLibPhoneNumber { get; set; } = false;
+    /// <summary>
+    /// Enables libphonenumber-based validation when normalizing phones.
+    /// </summary>
+    public bool UseLibPhoneNumber { get; set; } = false;
 
         // Default country for parsing ambiguous numbers (e.g. "050...")
-        public string DefaultRegion { get; set; } = "AE";
+    /// <summary>
+    /// Region hint passed to libphonenumber for ambiguous numbers.
+    /// </summary>
+    public string DefaultRegion { get; set; } = "AE";
     }
 
+    /// <summary>
+    /// Represents a processed date slice and relevant metadata.
+    /// </summary>
     public sealed class ProcessedWindow
     {
-        public DateTime Start { get; set; }
-        public DateTime End { get; set; }
-        public string? CsvName { get; set; }
-        public string? CsvSha256 { get; set; }
-        public int RowCount { get; set; }
-        public DateTime ProcessedAt { get; set; }
+    /// <summary>
+    /// Inclusive start date that was processed.
+    /// </summary>
+    public DateTime Start { get; set; }
+    /// <summary>
+    /// Inclusive end date that was processed.
+    /// </summary>
+    public DateTime End { get; set; }
+    /// <summary>
+    /// Name of the source CSV file.
+    /// </summary>
+    public string? CsvName { get; set; }
+    /// <summary>
+    /// Hash of the source CSV for quick change detection.
+    /// </summary>
+    public string? CsvSha256 { get; set; }
+    /// <summary>
+    /// Number of rows kept for this run.
+    /// </summary>
+    public int RowCount { get; set; }
+    /// <summary>
+    /// Timestamp of when the run completed.
+    /// </summary>
+    public DateTime ProcessedAt { get; set; }
 
     }
 
+    /// <summary>
+    /// Helper for serializing configuration to disk in the user profile.
+    /// </summary>
     public static class ConfigStore
     {
         private static readonly JsonSerializerOptions _jsonOpts = new()
@@ -53,6 +116,9 @@ namespace BirthdayExtractor
             WriteIndented = true
         };
 
+        /// <summary>
+        /// Resolves the user-specific config path, ensuring the folder exists.
+        /// </summary>
         public static string GetConfigPath()
         {
             var dir = Path.Combine(
@@ -62,6 +128,9 @@ namespace BirthdayExtractor
             return Path.Combine(dir, "config.json");
         }
 
+        /// <summary>
+        /// Reads configuration from disk, creating defaults (and backups) when required.
+        /// </summary>
         public static AppConfig LoadOrCreate()
         {
             var path = GetConfigPath();
@@ -94,6 +163,9 @@ namespace BirthdayExtractor
             }
         }
 
+        /// <summary>
+        /// Persists the supplied configuration to disk.
+        /// </summary>
         public static void Save(AppConfig cfg)
         {
             var path = GetConfigPath();
@@ -101,6 +173,9 @@ namespace BirthdayExtractor
             File.WriteAllText(path, json);
         }
 
+        /// <summary>
+        /// Computes an uppercase SHA-256 hash for the provided file path.
+        /// </summary>
         public static string ComputeSha256(string filePath)
         {
             using var sha = SHA256.Create();
@@ -119,6 +194,9 @@ namespace BirthdayExtractor
         /// <summary>
         /// Try to normalize a UAE mobile to E.164 (+9715########). Returns true if recognized as UAE mobile.
         /// Accepts inputs like +9715..., 009715..., 9715..., 05..., 5... and strips punctuation/spaces.
+        /// </summary>
+        /// <summary>
+        /// Attempts to normalize known UAE mobile formats into E.164 representation.
         /// </summary>
         private static bool TryNormalizeUaeMobile(string? input, out string normalized)
         {
@@ -168,6 +246,9 @@ namespace BirthdayExtractor
             return false;
         }
 
+        /// <summary>
+        /// Returns true when the two-digit prefix matches a known UAE mobile range.
+        /// </summary>
         private static bool IsUaeMobilePrefix(string twoDigits)
         {
             // common mobile prefixes in UAE: 50/52/53/54/55/56/57/58 (some are MVNO/operator-specific)
@@ -178,6 +259,9 @@ namespace BirthdayExtractor
         /// Normalization for matching across all phones:
         /// - If UAE mobile pattern recognized -> E.164 (+9715########)
         /// - Else: return canonical digits (with leading '+' if present) for stable matching, no validity asserted.
+        /// </summary>
+        /// <summary>
+        /// Produces a simplified phone token that aids in matching across records.
         /// </summary>
         private static string NormalizePhoneForMatching(string? input)
         {
