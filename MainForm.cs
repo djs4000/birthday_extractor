@@ -1,6 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 namespace BirthdayExtractor
@@ -49,7 +51,7 @@ namespace BirthdayExtractor
             // sanity defaults if someone hand-edited config
             if (_cfg.DefaultWindowDays <= 0) _cfg.DefaultWindowDays = 7;
             // 2) Form shell: establish window chrome before wiring controls
-            Text = "Birthday Extractor v0.52";
+            Text = $"Birthday Extractor v{AppVersion.Display}";
             Width = 820; Height = 600;
             StartPosition = FormStartPosition.CenterScreen;
             // 3) Menu (Dock Top) for settings + history shortcuts
@@ -106,6 +108,13 @@ namespace BirthdayExtractor
             txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
             SyncDefaultOutDir();
         }
+
+        /// <inheritdoc />
+        protected override async void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            await CheckForUpdatesAsync();
+        }
         /// <summary>
         /// Opens the secondary settings dialog and reapplies any updated defaults.
         /// </summary>
@@ -120,6 +129,82 @@ namespace BirthdayExtractor
                 chkCsv.Checked  = _cfg.DefaultWriteCsv;
                 chkXlsx.Checked = _cfg.DefaultWriteXlsx;
                 Log("Settings saved.");
+            }
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            if (_cfg is null || !_cfg.EnableUpdateChecks)
+            {
+                return;
+            }
+
+            var token = !string.IsNullOrWhiteSpace(_cfg.GitHubToken)
+                ? _cfg.GitHubToken
+                : Environment.GetEnvironmentVariable("BIRTHDAY_EXTRACTOR_GITHUB_TOKEN");
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                Log("Update check skipped: no GitHub token configured.");
+                return;
+            }
+
+            try
+            {
+                using var updater = new UpdateService("djs4000", "birthday_extractor", token);
+                var release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+                if (release is null)
+                {
+                    return;
+                }
+
+                var sizeMb = release.Asset.SizeBytes / (1024d * 1024d);
+                var notes = string.IsNullOrWhiteSpace(release.Notes)
+                    ? "No release notes provided."
+                    : release.Notes!.Trim();
+
+                if (notes.Length > 600)
+                {
+                    notes = notes[..600] + "...";
+                }
+
+                var message =
+                    $"A new version ({release.Tag}) is available. You are running {AppVersion.Display}.\n\n" +
+                    $"Asset: {release.Asset.Name} ({sizeMb:F1} MB)\n\n" +
+                    $"Release notes:\n{notes}\n\n" +
+                    "Download and install now?";
+
+                var choice = MessageBox.Show(this, message, "Update available", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                if (choice != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                Log($"Downloading update {release.Tag}...");
+                var lastLogged = -10;
+                var progress = new Progress<int>(p =>
+                {
+                    if (p - lastLogged >= 10 || p == 100)
+                    {
+                        lastLogged = p;
+                        Log($"Download progress: {p}%");
+                    }
+                });
+
+                var downloadPath = await updater.DownloadAssetAsync(release.Asset, progress, CancellationToken.None);
+                Log($"Update downloaded to {downloadPath}.");
+
+                Process.Start(new ProcessStartInfo(downloadPath)
+                {
+                    UseShellExecute = true
+                });
+
+                Log("Launched the updater. The application will now exit.");
+                Close();
+            }
+            catch (Exception ex)
+            {
+                Log("Update check failed: " + ex.Message);
             }
         }
         /// <summary>

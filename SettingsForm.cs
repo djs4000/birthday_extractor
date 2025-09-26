@@ -17,6 +17,8 @@ namespace BirthdayExtractor
         private CheckBox chkUseLibPhone = null!;   // <— add this
         private TextBox txtWebhookUrl = null!;
         private TextBox txtWebhookAuth = null!;
+        private CheckBox chkUpdateChecks = null!;
+        private TextBox txtGitHubToken = null!;
         private Button btnSave = null!;
         private Button btnCancel = null!;
         private readonly AppConfig _cfg;
@@ -27,7 +29,7 @@ namespace BirthdayExtractor
         {
             _cfg = cfg;
             Text = "Settings";
-            Width = 520; Height = 360;
+            Width = 520; Height = 420;
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false; MinimizeBox = false;
@@ -64,6 +66,30 @@ namespace BirthdayExtractor
             Controls.Add(chkUseLibPhone);
             y += 35;
 
+            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Updates:" });
+            chkUpdateChecks = new CheckBox
+            {
+                Left = 260,
+                Top = y,
+                Width = 240,
+                Text = "Check for updates on launch",
+                Checked = _cfg.EnableUpdateChecks
+            };
+            Controls.Add(chkUpdateChecks);
+            y += 30;
+
+            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "GitHub token (optional):" });
+            txtGitHubToken = new TextBox
+            {
+                Left = 260,
+                Top = y - 4,
+                Width = 200,
+                Text = _cfg.GitHubToken ?? string.Empty,
+                UseSystemPasswordChar = true
+            };
+            Controls.Add(txtGitHubToken);
+            y += 35;
+
 
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Webhook URL (future):" });
 
@@ -96,6 +122,8 @@ namespace BirthdayExtractor
             _cfg.WebhookUrl             = string.IsNullOrWhiteSpace(txtWebhookUrl.Text) ? null : txtWebhookUrl.Text.Trim();
             _cfg.WebhookAuthHeader      = string.IsNullOrWhiteSpace(txtWebhookAuth.Text) ? null : txtWebhookAuth.Text.Trim();
             _cfg.UseLibPhoneNumber      = chkUseLibPhone.Checked;
+            _cfg.EnableUpdateChecks     = chkUpdateChecks.Checked;
+            _cfg.GitHubToken            = string.IsNullOrWhiteSpace(txtGitHubToken.Text) ? null : txtGitHubToken.Text.Trim();
             ConfigStore.Save(_cfg);
             DialogResult = DialogResult.OK;
         }
