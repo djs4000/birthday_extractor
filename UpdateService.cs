@@ -18,20 +18,22 @@ namespace BirthdayExtractor
     {
         private readonly HttpClient _httpClient;
         private readonly bool _ownsClient;
+        private readonly bool _hasPersonalAccessToken;
         private readonly string _apiEndpoint;
 
         public UpdateService(string repoOwner, string repoName, string? personalAccessToken, HttpClient? client = null)
         {
             _httpClient = client ?? CreateHttpClient(personalAccessToken);
             _ownsClient = client is null;
+            _hasPersonalAccessToken = !string.IsNullOrWhiteSpace(personalAccessToken);
             _apiEndpoint = $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest";
 
             // When a pre-configured client is supplied we still need to ensure
             // auth headers are present if a token exists.
-            if (client is not null && !string.IsNullOrWhiteSpace(personalAccessToken))
+            if (client is not null && _hasPersonalAccessToken)
             {
                 client.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", personalAccessToken);
+                    new AuthenticationHeaderValue("token", personalAccessToken);
             }
         }
 
@@ -88,6 +90,9 @@ namespace BirthdayExtractor
             {
                 var name = asset.GetProperty("name").GetString();
                 var downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                var apiDownloadUrl = asset.TryGetProperty("url", out var apiUrlElement)
+                    ? apiUrlElement.GetString()
+                    : null;
                 var size = asset.TryGetProperty("size", out var sizeElement) ? sizeElement.GetInt64() : 0L;
 
                 if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(downloadUrl))
@@ -95,7 +100,11 @@ namespace BirthdayExtractor
                     continue;
                 }
 
-                var candidate = new ReleaseAsset(name, new Uri(downloadUrl, UriKind.Absolute), size);
+                var candidate = new ReleaseAsset(
+                    name,
+                    new Uri(downloadUrl, UriKind.Absolute),
+                    !string.IsNullOrWhiteSpace(apiDownloadUrl) ? new Uri(apiDownloadUrl, UriKind.Absolute) : null,
+                    size);
 
                 // Prefer .exe payloads for the self-contained Windows app, otherwise keep the first asset.
                 if (selectedAsset is null || name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
@@ -132,7 +141,11 @@ namespace BirthdayExtractor
         {
             var destinationPath = Path.Combine(Path.GetTempPath(), asset.Name);
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, asset.DownloadUrl);
+            var requestUri = _hasPersonalAccessToken && asset.ApiDownloadUrl is not null
+                ? asset.ApiDownloadUrl
+                : asset.BrowserDownloadUrl;
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
             request.Headers.Accept.Clear();
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
 
@@ -183,7 +196,7 @@ namespace BirthdayExtractor
             if (!string.IsNullOrWhiteSpace(personalAccessToken))
             {
                 client.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", personalAccessToken);
+                    new AuthenticationHeaderValue("token", personalAccessToken);
             }
 
             return client;
@@ -205,6 +218,6 @@ namespace BirthdayExtractor
         /// <summary>
         /// Represents a downloadable asset bundled with a release.
         /// </summary>
-        internal sealed record ReleaseAsset(string Name, Uri DownloadUrl, long SizeBytes);
+        internal sealed record ReleaseAsset(string Name, Uri BrowserDownloadUrl, Uri? ApiDownloadUrl, long SizeBytes);
     }
 }
