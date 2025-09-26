@@ -38,7 +38,7 @@ namespace BirthdayExtractor
         /// <summary>
         /// When true, a filtered CSV export will be produced.
         /// </summary>
-        public bool WriteCsv { get; set; } = true;
+        public bool WriteCsv { get; set; } = false;
         /// <summary>
         /// When true, an XLSX workbook with the filtered data will also be produced.
         /// </summary>
@@ -62,7 +62,7 @@ namespace BirthdayExtractor
         /// <summary>
         /// Enables libphonenumber validation/normalization when available.
         /// </summary>
-        public bool UseLibPhoneNumber { get; set; } = false;
+        public bool UseLibPhoneNumber { get; set; } = true;
         /// <summary>
         /// Region code supplied to libphonenumber for ambiguous numbers.
         /// </summary>
