@@ -57,6 +57,26 @@ namespace BirthdayExtractor
             Text = $"Birthday Extractor v{AppVersion.Display}";
             Width = 820; Height = 600;
             StartPosition = FormStartPosition.CenterScreen;
+
+            // 3) Build UI
+            InitializeMenu();
+            InitializeContentPanel();
+
+            // 4) Defaults pulled from config to pre-populate the form
+            dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
+            dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
+            chkCsv.Checked  = _cfg.DefaultWriteCsv;
+            chkXlsx.Checked = _cfg.DefaultWriteXlsx;
+            dtStart.ValueChanged += (s, e) => dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
+            txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
+            SyncDefaultOutDir();
+        }
+
+        /// <summary>
+        /// Sets up the main menu.
+        /// </summary>
+        private void InitializeMenu()
+        {
             // 3) Menu (Dock Top) for settings + history shortcuts
             menu = new MenuStrip();
             miSettings = new ToolStripMenuItem("Settings...");
@@ -68,6 +88,13 @@ namespace BirthdayExtractor
             menu.Dock = DockStyle.Top;
             MainMenuStrip = menu;
             Controls.Add(menu);
+        }
+
+        /// <summary>
+        /// Sets up the main content panel and all its child controls.
+        /// </summary>
+        private void InitializeContentPanel()
+        {
             // 4) Content panel (Dock Fill) – all inputs go here
             content = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10) };
             Controls.Add(content);
@@ -104,14 +131,6 @@ namespace BirthdayExtractor
                 btnRun, btnCancel, btnUpload,
                 progress, txtLog
             });
-            // 7) Defaults pulled from config to pre-populate the form
-            dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
-            dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
-            chkCsv.Checked  = _cfg.DefaultWriteCsv;
-            chkXlsx.Checked = _cfg.DefaultWriteXlsx;
-            dtStart.ValueChanged += (s, e) => dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
-            txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
-            SyncDefaultOutDir();
         }
 
         /// <inheritdoc />
@@ -501,40 +520,6 @@ namespace BirthdayExtractor
                 return;
             }
 
-            var leads = _lastResult.Leads;
-            var leadsWithKeys = leads.Where(l => !string.IsNullOrWhiteSpace(l.BusinessKey)).ToList();
-            var missingKeyCount = leads.Count - leadsWithKeys.Count;
-            if (missingKeyCount > 0)
-            {
-                Log($"WARN: {missingKeyCount} lead(s) are missing a business key and will be skipped.");
-            }
-
-            var uploadCandidates = new List<ExtractedLead>(leadsWithKeys.Count);
-            int missingFieldSkips = 0;
-            foreach (var lead in leadsWithKeys)
-            {
-                var missingFields = ErpNextClient.GetMissingRequiredFields(lead);
-                if (missingFields.Count > 0)
-                {
-                    missingFieldSkips++;
-                    Log($"Skipping {lead.BusinessKey}: missing {string.Join(", ", missingFields)}.");
-                    continue;
-                }
-
-                uploadCandidates.Add(lead);
-            }
-
-            if (missingFieldSkips > 0)
-            {
-                Log($"Skipped {missingFieldSkips} lead(s) due to missing required fields.");
-            }
-
-            if (uploadCandidates.Count == 0)
-            {
-                Log("No leads with all required fields available for upload.");
-                return;
-            }
-
             btnUpload.Enabled = false;
             btnRun.Enabled = false;
             btnCancel.Enabled = true;
@@ -545,42 +530,14 @@ namespace BirthdayExtractor
             try
             {
                 Log("Starting ERPNext upload...");
-                using var client = new ErpNextClient(_cfg.ErpNextBaseUrl!, _cfg.ErpNextApiKey!, _cfg.ErpNextApiSecret!);
-                var cancellation = _cts.Token;
-                var uniqueKeys = new HashSet<string>(uploadCandidates.Select(l => l.BusinessKey!), StringComparer.OrdinalIgnoreCase);
-                Log($"Collected {uniqueKeys.Count} unique business key(s) from this run.");
-                var existing = await client.FetchExistingKeysAsync(uniqueKeys, cancellation);
-                Log($"ERPNext already contains {existing.Count} matching lead(s).");
-                var toCreate = uploadCandidates.Where(l => !existing.Contains(l.BusinessKey)).ToList();
-                if (toCreate.Count == 0)
-                {
-                    Log("All leads already exist in ERPNext. Nothing to upload.");
-                    return;
-                }
-
-                int success = 0, failed = 0, index = 0;
-                var uploadStart = DateTime.Now;
-                foreach (var lead in toCreate)
-                {
-                    cancellation.ThrowIfCancellationRequested();
-                    index++;
-                    try
+                await ErpNextUploader.UploadAsync(
+                    _lastResult.Leads,
+                    new ErpNextUploadOptions(_cfg.ErpNextBaseUrl!, _cfg.ErpNextApiKey!, _cfg.ErpNextApiSecret!)
                     {
-                        await client.CreateLeadAsync(lead, uploadStart, cancellation);
-                        success++;
-                        var childDisplay = string.Join(" ", new[] { lead.ChildFirstName, lead.ChildLastName }
-                            .Where(s => !string.IsNullOrWhiteSpace(s)));
-                        if (string.IsNullOrWhiteSpace(childDisplay)) childDisplay = lead.BusinessKey;
-                        Log($"Uploaded {index}/{toCreate.Count}: {childDisplay}");
-                    }
-                    catch (Exception ex)
-                    {
-                        failed++;
-                        Log($"ERROR uploading {lead.BusinessKey}: {ex.Message}");
-                    }
-                }
-
-                Log($"Upload complete. Created {success} lead(s), skipped {existing.Count} duplicate(s), failed {failed}.");
+                        UploadTimestamp = DateTime.Now
+                    },
+                    Log,
+                    _cts.Token);
             }
             catch (OperationCanceledException)
             {
