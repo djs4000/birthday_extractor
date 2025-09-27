@@ -27,6 +27,7 @@ namespace BirthdayExtractor
             _ownsClient = client is null;
             _hasPersonalAccessToken = !string.IsNullOrWhiteSpace(personalAccessToken);
             _apiEndpoint = $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest";
+            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"BirthdayExtractor/{AppVersion.Display}");
 
             // When a pre-configured client is supplied we still need to ensure
             // auth headers are present if a token exists.

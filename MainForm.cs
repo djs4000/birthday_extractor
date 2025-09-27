@@ -57,6 +57,26 @@ namespace BirthdayExtractor
             Text = $"Birthday Extractor v{AppVersion.Display}";
             Width = 820; Height = 600;
             StartPosition = FormStartPosition.CenterScreen;
+
+            // 3) Build UI
+            InitializeMenu();
+            InitializeContentPanel();
+
+            // 4) Defaults pulled from config to pre-populate the form
+            dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
+            dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
+            chkCsv.Checked  = _cfg.DefaultWriteCsv;
+            chkXlsx.Checked = _cfg.DefaultWriteXlsx;
+            dtStart.ValueChanged += (s, e) => dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
+            txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
+            SyncDefaultOutDir();
+        }
+
+        /// <summary>
+        /// Sets up the main menu.
+        /// </summary>
+        private void InitializeMenu()
+        {
             // 3) Menu (Dock Top) for settings + history shortcuts
             menu = new MenuStrip();
             miSettings = new ToolStripMenuItem("Settings...");
@@ -68,6 +88,13 @@ namespace BirthdayExtractor
             menu.Dock = DockStyle.Top;
             MainMenuStrip = menu;
             Controls.Add(menu);
+        }
+
+        /// <summary>
+        /// Sets up the main content panel and all its child controls.
+        /// </summary>
+        private void InitializeContentPanel()
+        {
             // 4) Content panel (Dock Fill) – all inputs go here
             content = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10) };
             Controls.Add(content);
@@ -104,14 +131,6 @@ namespace BirthdayExtractor
                 btnRun, btnCancel, btnUpload,
                 progress, txtLog
             });
-            // 7) Defaults pulled from config to pre-populate the form
-            dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
-            dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
-            chkCsv.Checked  = _cfg.DefaultWriteCsv;
-            chkXlsx.Checked = _cfg.DefaultWriteXlsx;
-            dtStart.ValueChanged += (s, e) => dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
-            txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
-            SyncDefaultOutDir();
         }
 
         /// <inheritdoc />
