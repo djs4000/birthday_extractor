@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace BirthdayExtractor
@@ -107,6 +108,11 @@ namespace BirthdayExtractor
 
             var writeCsv = GetFlag(parsed, "csv-out", config.DefaultWriteCsv) && !GetFlag(parsed, "no-csv-out");
             var writeXlsx = GetFlag(parsed, "xlsx-out", config.DefaultWriteXlsx) && !GetFlag(parsed, "no-xlsx-out");
+            var uploadErpNext = GetFlag(parsed, "erpnext") || GetFlag(parsed, "erp-upload");
+            if (GetFlag(parsed, "no-erpnext"))
+            {
+                uploadErpNext = false;
+            }
             var quiet = GetFlag(parsed, "quiet");
 
             if (!parsed.TryGetValue("min-age", out var minAgeText) || !int.TryParse(minAgeText, out var minAge))
@@ -125,6 +131,17 @@ namespace BirthdayExtractor
 
             var useLibPhoneNumber = GetFlag(parsed, "libphonenumber", config.UseLibPhoneNumber) && !GetFlag(parsed, "no-libphonenumber");
 
+            var erpBaseUrl = parsed.TryGetValue("erp-base", out var erpBase) && !string.IsNullOrWhiteSpace(erpBase)
+                ? erpBase!
+                : config.ErpNextBaseUrl;
+            var erpApiKey = parsed.TryGetValue("erp-key", out var erpKey) && !string.IsNullOrWhiteSpace(erpKey)
+                ? erpKey!
+                : config.ErpNextApiKey;
+            var erpApiSecret = parsed.TryGetValue("erp-secret", out var erpSecret) && !string.IsNullOrWhiteSpace(erpSecret)
+                ? erpSecret!
+                : config.ErpNextApiSecret;
+
+            var exitCode = 0;
             try
             {
                 Directory.CreateDirectory(outputDir);
@@ -153,8 +170,49 @@ namespace BirthdayExtractor
                     if (result.XlsxPath is not null) Console.WriteLine($"XLSX: {result.XlsxPath}");
                 }
 
+                if (uploadErpNext)
+                {
+                    if (result.Leads.Count == 0)
+                    {
+                        Console.Error.WriteLine("ERROR: ERPNext upload requested but no leads were produced.");
+                        Environment.ExitCode = 1;
+                        return true;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(erpBaseUrl) || string.IsNullOrWhiteSpace(erpApiKey) || string.IsNullOrWhiteSpace(erpApiSecret))
+                    {
+                        Console.Error.WriteLine("ERROR: ERPNext credentials are required. Use --erp-base, --erp-key, and --erp-secret or configure them in the app.");
+                        Environment.ExitCode = 1;
+                        return true;
+                    }
+
+                    if (!quiet)
+                    {
+                        Console.WriteLine("Starting ERPNext upload...");
+                    }
+
+                    try
+                    {
+                        var summary = RunErpNextUpload(result.Leads, new ErpNextUploadOptions(erpBaseUrl!, erpApiKey!, erpApiSecret!)
+                        {
+                            UploadTimestamp = DateTime.Now
+                        }, quiet ? null : (Action<string>)(m => Console.WriteLine($"{DateTime.Now:HH:mm:ss}  {m}")));
+
+                        if (summary.Failed > 0)
+                        {
+                            exitCode = Math.Max(exitCode, 2);
+                        }
+                    }
+                    catch (Exception uploadEx)
+                    {
+                        Console.Error.WriteLine("ERROR during ERPNext upload: " + uploadEx.Message);
+                        Environment.ExitCode = 1;
+                        return true;
+                    }
+                }
+
                 TryLogHistory(config, csvPath, start, end, result);
-                Environment.ExitCode = 0;
+                Environment.ExitCode = exitCode;
             }
             catch (Exception ex)
             {
@@ -233,6 +291,12 @@ namespace BirthdayExtractor
             };
         }
 
+        private static ErpNextUploadSummary RunErpNextUpload(IReadOnlyList<ExtractedLead> leads, ErpNextUploadOptions options, Action<string>? log)
+        {
+            var logger = log ?? (_ => { });
+            return ErpNextUploader.UploadAsync(leads, options, logger, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
         private static bool TryParseDate(string? text, out DateTime value)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -289,6 +353,11 @@ namespace BirthdayExtractor
             Console.WriteLine("  --no-libphonenumber     Disable libphonenumber normalization");
             Console.WriteLine("  --default-region <code> Override libphonenumber region");
             Console.WriteLine("  --quiet                 Suppress console logging");
+            Console.WriteLine("  --erpnext               Upload results directly to ERPNext");
+            Console.WriteLine("  --no-erpnext            Skip ERPNext upload (overrides --erpnext)");
+            Console.WriteLine("  --erp-base <url>        Override ERPNext base URL");
+            Console.WriteLine("  --erp-key <value>       Override ERPNext API key");
+            Console.WriteLine("  --erp-secret <value>    Override ERPNext API secret");
             Console.WriteLine("  --help                  Show this help text");
         }
     }
