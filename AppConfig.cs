@@ -65,6 +65,19 @@ namespace BirthdayExtractor
     public string? WebhookAuthHeader { get; set; }
 
     /// <summary>
+    /// Base URL for ERPNext REST API calls.
+    /// </summary>
+    public string? ErpNextBaseUrl { get; set; }
+    /// <summary>
+    /// API key portion used for ERPNext token authentication.
+    /// </summary>
+    public string? ErpNextApiKey { get; set; }
+    /// <summary>
+    /// API secret portion used for ERPNext token authentication.
+    /// </summary>
+    public string? ErpNextApiSecret { get; set; }
+
+    /// <summary>
     /// Log of previously processed windows to warn about duplicates.
     /// </summary>
     public List<ProcessedWindow> History { get; set; } = new();
