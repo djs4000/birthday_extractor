@@ -65,6 +65,19 @@ namespace BirthdayExtractor
     public string? WebhookAuthHeader { get; set; }
 
     /// <summary>
+    /// Base URL for ERPNext REST API calls.
+    /// </summary>
+    public string? ErpNextBaseUrl { get; set; }
+    /// <summary>
+    /// API key portion used for ERPNext token authentication.
+    /// </summary>
+    public string? ErpNextApiKey { get; set; }
+    /// <summary>
+    /// API secret portion used for ERPNext token authentication.
+    /// </summary>
+    public string? ErpNextApiSecret { get; set; }
+
+    /// <summary>
     /// Log of previously processed windows to warn about duplicates.
     /// </summary>
     public List<ProcessedWindow> History { get; set; } = new();
@@ -194,99 +207,6 @@ namespace BirthdayExtractor
             using var fs = File.OpenRead(filePath);
             var hash = sha.ComputeHash(fs);
             return Convert.ToHexString(hash); // .NET 5+ uppercase hex
-        }
-        private static string DigitsOnly(string s)
-        {
-            var sb = new System.Text.StringBuilder(s.Length);
-            foreach (var ch in s)
-                if (ch >= '0' && ch <= '9') sb.Append(ch);
-            return sb.ToString();
-        }
-
-        /// <summary>
-        /// Try to normalize a UAE mobile to E.164 (+9715########). Returns true if recognized as UAE mobile.
-        /// Accepts inputs like +9715..., 009715..., 9715..., 05..., 5... and strips punctuation/spaces.
-        /// </summary>
-        /// <summary>
-        /// Attempts to normalize known UAE mobile formats into E.164 representation.
-        /// </summary>
-        private static bool TryNormalizeUaeMobile(string? input, out string normalized)
-        {
-            normalized = string.Empty;
-            if (string.IsNullOrWhiteSpace(input)) return false;
-
-            var raw = input.Trim();
-            bool hadPlus = raw.StartsWith("+");
-            var digits = DigitsOnly(raw);
-
-            // Handle 00 prefix (international)
-            if (digits.StartsWith("00")) digits = digits.Substring(2);
-
-            // If starts with 971 and 12 digits total: expect 971 5 ########
-            if (digits.Length == 12 && digits.StartsWith("971") && digits[3] == '5')
-            {
-                normalized = "+971" + digits.Substring(3); // +9715########
-                return true;
-            }
-
-            // If starts with 971 but not 12 digits yet (e.g. formatting remnants)
-            if (digits.StartsWith("971"))
-            {
-                var tail = digits.Substring(3);
-                if (tail.Length == 9 && tail.StartsWith("5"))
-                {
-                    normalized = "+971" + tail;
-                    return true;
-                }
-            }
-
-            // If local 9-digit mobile starting with 5x
-            if (digits.Length == 9 && digits[0] == '5' && IsUaeMobilePrefix(digits.Substring(0, 2)))
-            {
-                normalized = "+971" + digits; // assume UAE
-                return true;
-            }
-
-            // If starts with 0 then 5x and 10 digits (e.g., 05########)
-            if (digits.Length == 10 && digits[0] == '0' && digits[1] == '5' && IsUaeMobilePrefix(digits.Substring(1, 2)))
-            {
-                normalized = "+971" + digits.Substring(1); // drop leading 0
-                return true;
-            }
-
-            // If someone typed only 8 digits (missing leading 5?), don’t guess.
-            return false;
-        }
-
-        /// <summary>
-        /// Returns true when the two-digit prefix matches a known UAE mobile range.
-        /// </summary>
-        private static bool IsUaeMobilePrefix(string twoDigits)
-        {
-            // common mobile prefixes in UAE: 50/52/53/54/55/56/57/58 (some are MVNO/operator-specific)
-            return twoDigits is "50" or "52" or "53" or "54" or "55" or "56" or "57" or "58";
-        }
-
-        /// <summary>
-        /// Normalization for matching across all phones:
-        /// - If UAE mobile pattern recognized -> E.164 (+9715########)
-        /// - Else: return canonical digits (with leading '+' if present) for stable matching, no validity asserted.
-        /// </summary>
-        /// <summary>
-        /// Produces a simplified phone token that aids in matching across records.
-        /// </summary>
-        private static string NormalizePhoneForMatching(string? input)
-        {
-            if (string.IsNullOrWhiteSpace(input)) return string.Empty;
-
-            if (TryNormalizeUaeMobile(input, out var uae)) return uae;
-
-            // Generic: keep a '+' if it was at the start, but strip everything else non-digit
-            string trimmed = input.Trim();
-            bool leadingPlus = trimmed.StartsWith("+");
-            string digits = DigitsOnly(trimmed);
-            if (string.IsNullOrEmpty(digits)) return string.Empty;
-            return leadingPlus ? "+" + digits : digits;
         }
 
     }

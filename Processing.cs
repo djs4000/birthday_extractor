@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using CsvHelper;
 using CsvHelper.Configuration;
+using PhoneNumbers;
 using ClosedXML.Excel;
 namespace BirthdayExtractor
 {
@@ -35,7 +36,7 @@ namespace BirthdayExtractor
         /// Maximum age (turning) that still counts a child for celebrations.
         /// </summary>
         public int MaxAge { get; set; } = 14;
-      
+
         /// <summary>
         /// When true, a filtered CSV export will be produced.
         /// </summary>
@@ -88,6 +89,29 @@ namespace BirthdayExtractor
         /// Full path to the emitted XLSX file (if XLSX export was requested).
         /// </summary>
         public string? XlsxPath { get; set; }
+        /// <summary>
+        /// Extracted child/guardian records that can be reused for ERP uploads.
+        /// </summary>
+        public IReadOnlyList<ExtractedLead> Leads { get; set; } = Array.Empty<ExtractedLead>();
+    }
+
+    /// <summary>
+    /// Public representation of an extracted child/guardian record used for downstream uploads.
+    /// </summary>
+    public sealed class ExtractedLead
+    {
+        public string? ChildFirstName { get; set; }
+        public string? ChildLastName { get; set; }
+        public string? Email { get; set; }
+        public string? Mobile { get; set; }
+        public string? NormalizedMobile { get; set; }
+        public string? DateOfBirth { get; set; }
+        public string? VisitorType { get; set; }
+        public string? ParentName { get; set; }
+        public string? ParentFirstName { get; set; }
+        public string? ParentLastName { get; set; }
+        public int Age { get; set; }
+        public string BusinessKey { get; set; } = string.Empty;
     }
     /// <summary>
     /// Core engine that parses CSV data, links guardians, and emits exports.
@@ -133,11 +157,14 @@ namespace BirthdayExtractor
             public string? DateOfBirth { get; set; } // yyyy-MM-dd
             public string? VisitorType { get; set; } // null if column absent
             public string? ParentName { get; set; }
+            public string? GuardianFirstName { get; set; }
+            public string? GuardianLastName { get; set; }
             public int Age { get; set; }             // turning age
             public int BirthdayDay { get; set; }
             public int BirthdayMonth { get; set; }
             public DateTime NextBirthday { get; set; } // for sorting only
-            public string? NormalizedMobile { get; set; }   // NEW  
+            public string? NormalizedMobile { get; set; }   // NEW
+            public string BusinessKey { get; set; } = string.Empty;
         }
         /// <summary>
         /// Runs the full extraction pipeline using the supplied options.
@@ -145,7 +172,7 @@ namespace BirthdayExtractor
         /// </summary>
         public ProcResult Process(ProcOptions o)
         {
-            
+
             o.Cancellation.ThrowIfCancellationRequested();
             o.Log?.Invoke($"CSV = {o.CsvPath}");
             o.Log?.Invoke($"Start = {o.Start:yyyy-MM-dd}, End = {o.End:yyyy-MM-dd}");
@@ -240,6 +267,25 @@ namespace BirthdayExtractor
                 }
                 if (o.UseLibPhoneNumber && (string.IsNullOrEmpty(r.PhoneKey) || !r.PhoneValid))
                     continue;
+                // Build dedupe/business key
+                string businessKey;
+                if (!string.IsNullOrWhiteSpace(r.PhoneKey))
+                {
+                    businessKey = $"M:{r.PhoneKey}|DOB:{dob:yyyy-MM-dd}";
+                }
+                else if (!string.IsNullOrWhiteSpace(r.Email))
+                {
+                    businessKey = $"E:{r.Email.Trim().ToLowerInvariant()}|DOB:{dob:yyyy-MM-dd}";
+                }
+                else
+                {
+                    var childNameKey = string.Join(" ", new[] { r.FirstName, r.LastName }
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Select(s => s!.Trim().ToLowerInvariant()));
+                    businessKey = string.IsNullOrEmpty(childNameKey)
+                        ? $"DOB:{dob:yyyy-MM-dd}|ROW:{processed + 1}"
+                        : $"C:{childNameKey}|DOB:{dob:yyyy-MM-dd}";
+                }
                 // Add to output
                 kept.Add(new Output
                 {
@@ -251,10 +297,13 @@ namespace BirthdayExtractor
                     DateOfBirth   = dob.ToString("yyyy-MM-dd"),
                     VisitorType   = hasVisitorType ? (r.VisitorType ?? string.Empty) : null,
                     ParentName    = parentName,          // <-- now defined
+                    GuardianFirstName = guardian?.FirstName,
+                    GuardianLastName  = guardian?.LastName,
                     Age           = ageTurning,
                     BirthdayDay   = dob.Day,
                     BirthdayMonth = dob.Month,
-                    NextBirthday  = nextBday.Value
+                    NextBirthday  = nextBday.Value,
+                    BusinessKey   = businessKey
                 });
                 processed++;
                 if (processed % 5000 == 0) o.Log?.Invoke($"Processed {processed:n0}/{rows.Count:n0}...");
@@ -266,6 +315,21 @@ namespace BirthdayExtractor
             var stamp = $"{o.Start:yyyy-MM-dd}_to_{o.End:yyyy-MM-dd}";
             Directory.CreateDirectory(o.OutDir);
             string? csvOut = null, xlsxOut = null;
+            var extractedLeads = kept.Select(k => new ExtractedLead
+            {
+                ChildFirstName   = k.FirstName,
+                ChildLastName    = k.LastName,
+                Email            = k.Email,
+                Mobile           = k.Mobile,
+                NormalizedMobile = k.NormalizedMobile,
+                DateOfBirth      = k.DateOfBirth,
+                VisitorType      = k.VisitorType,
+                ParentName       = k.ParentName,
+                ParentFirstName  = k.GuardianFirstName,
+                ParentLastName   = k.GuardianLastName,
+                Age              = k.Age,
+                BusinessKey      = k.BusinessKey
+            }).ToList();
             if (o.WriteCsv)
             {
                 var desired = Path.Combine(o.OutDir, $"birthdays_{stamp}.csv");
@@ -280,7 +344,13 @@ namespace BirthdayExtractor
                 o.Log?.Invoke($"Wrote XLSX: {xlsxOut}");
             }
             ReportProgress(o, 100);
-            return new ProcResult { KeptCount = kept.Count, CsvPath = csvOut, XlsxPath = xlsxOut };
+            return new ProcResult
+            {
+                KeptCount = kept.Count,
+                CsvPath = csvOut,
+                XlsxPath = xlsxOut,
+                Leads = extractedLeads
+            };
         }
         // ---------- helpers ----------
         /// <summary>
@@ -371,27 +441,25 @@ namespace BirthdayExtractor
             {
                 try
                 {
-                    var utilType = Type.GetType("PhoneNumbers.PhoneNumberUtil, PhoneNumbers");
-                    if (utilType != null)
-                    {
-                        var getInstance = utilType.GetMethod("GetInstance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                        var util = getInstance!.Invoke(null, null);
-                        var parse = utilType.GetMethod("Parse", new[] { typeof(string), typeof(string) });
-                        var number = parse!.Invoke(util, new object[] { input!, defaultRegion });
-                        var isValid = utilType.GetMethod("IsValidNumber", new[] { number!.GetType() });
-                        bool valid = (bool)isValid!.Invoke(util, new[] { number })!;
-                        // Format as E164 and strip '+'
-                        var fmtType = Type.GetType("PhoneNumbers.PhoneNumberFormat, PhoneNumbers");
-                        var e164Enum = Enum.Parse(fmtType!, "E164");
-                        var format = utilType.GetMethod("Format", new[] { number.GetType(), fmtType! });
-                        var e164 = (string)format!.Invoke(util, new[] { number, e164Enum })!;
-                        string noPlus = e164.StartsWith("+") ? e164.Substring(1) : e164;
-                        return (noPlus, valid);
-                    }
+                    var cleanInput = input.Trim();
+                    // Per libphonenumber convention, replace leading "00" with "+" to signify an international number.
+                    // If it doesn't start with "+", it will be parsed relative to the defaultRegion.
+                    if (cleanInput.StartsWith("00"))
+                        cleanInput = "+" + cleanInput.Substring(2);
+
+                    var phoneUtil = PhoneNumberUtil.GetInstance();
+                    var number = phoneUtil.Parse(cleanInput, defaultRegion);
+                    bool valid = phoneUtil.IsValidNumber(number);
+
+                    // Format as E164 and strip '+' for the key
+                    var e164 = phoneUtil.Format(number, PhoneNumberFormat.E164);
+                    string noPlus = e164.StartsWith("+") ? e164.Substring(1) : e164;
+                    return (noPlus, valid);
                 }
-                catch
+                catch (NumberParseException ex)
                 {
-                    // ignore and fall through
+                    // The log delegate is better for UI/CLI consistency.
+                    // log?.Invoke($"[WARN] libphonenumber failed to parse '{input}': {ex.Message}");
                 }
             }
             // Fallback: keep digits (and if there was a '+', it's already in the digits)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -25,12 +26,14 @@ namespace BirthdayExtractor
         private Button btnBrowseOut = null!;
         private Button btnRun = null!;
         private Button btnCancel = null!;
+        private Button btnUpload = null!;
         private ProgressBar progress = null!;
         private TextBox txtLog = null!;
         // --- Processing state & config ---
         private readonly Processing _proc = new();
         private System.Threading.CancellationTokenSource? _cts;
         private AppConfig _cfg = null!;
+        private ProcResult? _lastResult;
         private MenuStrip menu = null!;
         private ToolStripMenuItem miSettings = null!;
         private ToolStripMenuItem miHistory  = null!;
@@ -54,6 +57,26 @@ namespace BirthdayExtractor
             Text = $"Birthday Extractor v{AppVersion.Display}";
             Width = 820; Height = 600;
             StartPosition = FormStartPosition.CenterScreen;
+
+            // 3) Build UI
+            InitializeMenu();
+            InitializeContentPanel();
+
+            // 4) Defaults pulled from config to pre-populate the form
+            dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
+            dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
+            chkCsv.Checked  = _cfg.DefaultWriteCsv;
+            chkXlsx.Checked = _cfg.DefaultWriteXlsx;
+            dtStart.ValueChanged += (s, e) => dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
+            txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
+            SyncDefaultOutDir();
+        }
+
+        /// <summary>
+        /// Sets up the main menu.
+        /// </summary>
+        private void InitializeMenu()
+        {
             // 3) Menu (Dock Top) for settings + history shortcuts
             menu = new MenuStrip();
             miSettings = new ToolStripMenuItem("Settings...");
@@ -65,6 +88,13 @@ namespace BirthdayExtractor
             menu.Dock = DockStyle.Top;
             MainMenuStrip = menu;
             Controls.Add(menu);
+        }
+
+        /// <summary>
+        /// Sets up the main content panel and all its child controls.
+        /// </summary>
+        private void InitializeContentPanel()
+        {
             // 4) Content panel (Dock Fill) – all inputs go here
             content = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10) };
             Controls.Add(content);
@@ -85,8 +115,10 @@ namespace BirthdayExtractor
             btnBrowseOut.Click += (s, e) => BrowseOutDir();
             btnRun = new Button { Left = 140, Top = 172, Width = 120, Text = "Run" };
             btnCancel = new Button { Left = 270, Top = 172, Width = 120, Text = "Cancel", Enabled = false };
+            btnUpload = new Button { Left = 400, Top = 172, Width = 150, Text = "Upload to ERPNext", Enabled = false };
             btnRun.Click += async (s, e) => await RunAsync();
             btnCancel.Click += (s, e) => _cts?.Cancel();
+            btnUpload.Click += async (s, e) => await UploadAsync();
             progress = new ProgressBar { Left = 20, Top = 212, Width = 760, Height = 18, Style = ProgressBarStyle.Continuous, Minimum = 0, Maximum = 100, Value = 0 };
             txtLog = new TextBox { Left = 20, Top = 242, Width = 760, Height = 300, Multiline = true, ScrollBars = ScrollBars.Vertical, ReadOnly = true };
             // 6) Add to content panel (not the form)
@@ -96,17 +128,9 @@ namespace BirthdayExtractor
                 lblEnd, dtEnd,
                 chkCsv, chkXlsx,
                 lblOut, txtOutDir, btnBrowseOut,
-                btnRun, btnCancel,
+                btnRun, btnCancel, btnUpload,
                 progress, txtLog
             });
-            // 7) Defaults pulled from config to pre-populate the form
-            dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
-            dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
-            chkCsv.Checked  = _cfg.DefaultWriteCsv;
-            chkXlsx.Checked = _cfg.DefaultWriteXlsx;
-            dtStart.ValueChanged += (s, e) => dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
-            txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
-            SyncDefaultOutDir();
         }
 
         /// <inheritdoc />
@@ -401,10 +425,11 @@ namespace BirthdayExtractor
                 }
             }
             Directory.CreateDirectory(outDir);
-            btnRun.Enabled = false; btnCancel.Enabled = true; txtLog.Clear(); SetProgress(0);
+            btnRun.Enabled = false; btnCancel.Enabled = true; btnUpload.Enabled = false; txtLog.Clear(); SetProgress(0);
             Log("Started..."); // push initial marker before heavy lifting begins
             _cts = new System.Threading.CancellationTokenSource();
             var progressCb = new Progress<int>(p => SetProgress(p));
+            _lastResult = null;
             try
             {
                 var result = await Task.Run(() => _proc.Process(new ProcOptions
@@ -426,6 +451,12 @@ namespace BirthdayExtractor
                 Log($"Done. Kept {result.KeptCount} rows.");
                 if (result.CsvPath is not null) Log($"CSV : {result.CsvPath}");
                 if (result.XlsxPath is not null) Log($"XLSX: {result.XlsxPath}");
+                _lastResult = result;
+                if (result.Leads.Count > 0)
+                {
+                    Log("Upload to ERPNext is available for this run.");
+                    btnUpload.Enabled = true;
+                }
                 // ---- append to history ----
                 try
                 {
@@ -460,6 +491,10 @@ namespace BirthdayExtractor
             finally
             {
                 btnRun.Enabled = true; btnCancel.Enabled = false;
+                if (_lastResult?.Leads.Count > 0)
+                {
+                    btnUpload.Enabled = true;
+                }
                 _cts?.Dispose(); _cts = null;
             }
             dtStart.ValueChanged += (s, e) =>
@@ -467,6 +502,64 @@ namespace BirthdayExtractor
                 // keep length consistent with config
                 dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
             };
+        }
+
+        private async Task UploadAsync()
+        {
+            if (_lastResult?.Leads is null || _lastResult.Leads.Count == 0)
+            {
+                MessageBox.Show(this, "Run the extractor before uploading.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_cfg.ErpNextBaseUrl) ||
+                string.IsNullOrWhiteSpace(_cfg.ErpNextApiKey) ||
+                string.IsNullOrWhiteSpace(_cfg.ErpNextApiSecret))
+            {
+                MessageBox.Show(this, "Configure the ERPNext API settings in Settings before uploading.");
+                return;
+            }
+
+            btnUpload.Enabled = false;
+            btnRun.Enabled = false;
+            btnCancel.Enabled = true;
+            var previousStyle = progress.Style;
+            progress.Style = ProgressBarStyle.Marquee;
+            progress.MarqueeAnimationSpeed = 30;
+            _cts = new System.Threading.CancellationTokenSource();
+            try
+            {
+                Log("Starting ERPNext upload...");
+                await ErpNextUploader.UploadAsync(
+                    _lastResult.Leads,
+                    new ErpNextUploadOptions(_cfg.ErpNextBaseUrl!, _cfg.ErpNextApiKey!, _cfg.ErpNextApiSecret!)
+                    {
+                        UploadTimestamp = DateTime.Now
+                    },
+                    Log,
+                    _cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                Log("Upload cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR during upload: " + ex.Message);
+            }
+            finally
+            {
+                progress.Style = previousStyle;
+                if (previousStyle == ProgressBarStyle.Continuous)
+                {
+                    SetProgress(0);
+                }
+                btnRun.Enabled = true;
+                btnCancel.Enabled = false;
+                btnUpload.Enabled = _lastResult?.Leads.Count > 0;
+                _cts?.Dispose();
+                _cts = null;
+            }
         }
     }
 }
