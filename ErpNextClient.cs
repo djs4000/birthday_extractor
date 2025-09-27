@@ -101,6 +101,47 @@ namespace BirthdayExtractor
             }
         }
 
+        internal static IReadOnlyList<string> GetMissingRequiredFields(ExtractedLead lead)
+        {
+            var missing = new List<string>();
+            var (parentFirst, parentLast) = ResolveGuardianNames(lead);
+            if (string.IsNullOrWhiteSpace(parentFirst) && string.IsNullOrWhiteSpace(parentLast))
+            {
+                missing.Add("first_name/last_name");
+            }
+
+            var phone = string.IsNullOrWhiteSpace(lead.NormalizedMobile) ? lead.Mobile : lead.NormalizedMobile;
+            if (string.IsNullOrWhiteSpace(phone))
+            {
+                missing.Add("mobile_no");
+            }
+
+            if (string.IsNullOrWhiteSpace(lead.Email))
+            {
+                missing.Add("custom_email");
+            }
+
+            var childName = string.Join(" ", new[] { lead.ChildFirstName, lead.ChildLastName }
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!.Trim()));
+            if (string.IsNullOrWhiteSpace(childName))
+            {
+                missing.Add("custom_child_names");
+            }
+
+            if (lead.Age <= 0)
+            {
+                missing.Add("custom_child_ages");
+            }
+
+            if (string.IsNullOrWhiteSpace(lead.DateOfBirth))
+            {
+                missing.Add("child_date_of_birth");
+            }
+
+            return missing;
+        }
+
         private static Dictionary<string, object?> BuildLeadPayload(ExtractedLead lead, DateTime now)
         {
             var (parentFirst, parentLast) = ResolveGuardianNames(lead);

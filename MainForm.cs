@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -508,6 +509,32 @@ namespace BirthdayExtractor
                 Log($"WARN: {missingKeyCount} lead(s) are missing a business key and will be skipped.");
             }
 
+            var uploadCandidates = new List<ExtractedLead>(leadsWithKeys.Count);
+            int missingFieldSkips = 0;
+            foreach (var lead in leadsWithKeys)
+            {
+                var missingFields = ErpNextClient.GetMissingRequiredFields(lead);
+                if (missingFields.Count > 0)
+                {
+                    missingFieldSkips++;
+                    Log($"Skipping {lead.BusinessKey}: missing {string.Join(", ", missingFields)}.");
+                    continue;
+                }
+
+                uploadCandidates.Add(lead);
+            }
+
+            if (missingFieldSkips > 0)
+            {
+                Log($"Skipped {missingFieldSkips} lead(s) due to missing required fields.");
+            }
+
+            if (uploadCandidates.Count == 0)
+            {
+                Log("No leads with all required fields available for upload.");
+                return;
+            }
+
             btnUpload.Enabled = false;
             btnRun.Enabled = false;
             btnCancel.Enabled = true;
@@ -520,11 +547,11 @@ namespace BirthdayExtractor
                 Log("Starting ERPNext upload...");
                 using var client = new ErpNextClient(_cfg.ErpNextBaseUrl!, _cfg.ErpNextApiKey!, _cfg.ErpNextApiSecret!);
                 var cancellation = _cts.Token;
-                var uniqueKeys = new HashSet<string>(leadsWithKeys.Select(l => l.BusinessKey!), StringComparer.OrdinalIgnoreCase);
+                var uniqueKeys = new HashSet<string>(uploadCandidates.Select(l => l.BusinessKey!), StringComparer.OrdinalIgnoreCase);
                 Log($"Collected {uniqueKeys.Count} unique business key(s) from this run.");
                 var existing = await client.FetchExistingKeysAsync(uniqueKeys, cancellation);
                 Log($"ERPNext already contains {existing.Count} matching lead(s).");
-                var toCreate = leadsWithKeys.Where(l => !existing.Contains(l.BusinessKey)).ToList();
+                var toCreate = uploadCandidates.Where(l => !existing.Contains(l.BusinessKey)).ToList();
                 if (toCreate.Count == 0)
                 {
                     Log("All leads already exist in ERPNext. Nothing to upload.");
