@@ -17,6 +17,9 @@ namespace BirthdayExtractor
         private CheckBox chkUseLibPhone = null!;   // <— add this
         private TextBox txtWebhookUrl = null!;
         private TextBox txtWebhookAuth = null!;
+        private TextBox txtErpUrl = null!;
+        private TextBox txtErpApiKey = null!;
+        private TextBox txtErpApiSecret = null!;
         private CheckBox chkUpdateChecks = null!;
         private TextBox txtGitHubToken = null!;
         private Button btnSave = null!;
@@ -29,7 +32,7 @@ namespace BirthdayExtractor
         {
             _cfg = cfg;
             Text = "Settings";
-            Width = 520; Height = 420;
+            Width = 520; Height = 520;
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false; MinimizeBox = false;
@@ -90,6 +93,40 @@ namespace BirthdayExtractor
             Controls.Add(txtGitHubToken);
             y += 35;
 
+            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "ERPNext base URL:" });
+            txtErpUrl = new TextBox
+            {
+                Left = 260,
+                Top = y - 4,
+                Width = 200,
+                Text = _cfg.ErpNextBaseUrl ?? string.Empty
+            };
+            Controls.Add(txtErpUrl);
+            y += 30;
+
+            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "ERPNext API key:" });
+            txtErpApiKey = new TextBox
+            {
+                Left = 260,
+                Top = y - 4,
+                Width = 200,
+                Text = _cfg.ErpNextApiKey ?? string.Empty
+            };
+            Controls.Add(txtErpApiKey);
+            y += 30;
+
+            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "ERPNext API secret:" });
+            txtErpApiSecret = new TextBox
+            {
+                Left = 260,
+                Top = y - 4,
+                Width = 200,
+                Text = _cfg.ErpNextApiSecret ?? string.Empty,
+                UseSystemPasswordChar = true
+            };
+            Controls.Add(txtErpApiSecret);
+            y += 35;
+
 
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Webhook URL (future):" });
 
@@ -121,6 +158,9 @@ namespace BirthdayExtractor
             _cfg.DefaultWriteXlsx       = chkXlsx.Checked;
             _cfg.WebhookUrl             = string.IsNullOrWhiteSpace(txtWebhookUrl.Text) ? null : txtWebhookUrl.Text.Trim();
             _cfg.WebhookAuthHeader      = string.IsNullOrWhiteSpace(txtWebhookAuth.Text) ? null : txtWebhookAuth.Text.Trim();
+            _cfg.ErpNextBaseUrl         = string.IsNullOrWhiteSpace(txtErpUrl.Text) ? null : txtErpUrl.Text.Trim();
+            _cfg.ErpNextApiKey          = string.IsNullOrWhiteSpace(txtErpApiKey.Text) ? null : txtErpApiKey.Text.Trim();
+            _cfg.ErpNextApiSecret       = string.IsNullOrWhiteSpace(txtErpApiSecret.Text) ? null : txtErpApiSecret.Text.Trim();
             _cfg.UseLibPhoneNumber      = chkUseLibPhone.Checked;
             _cfg.EnableUpdateChecks     = chkUpdateChecks.Checked;
             _cfg.GitHubToken            = string.IsNullOrWhiteSpace(txtGitHubToken.Text) ? null : txtGitHubToken.Text.Trim();

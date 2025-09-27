@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -25,12 +26,14 @@ namespace BirthdayExtractor
         private Button btnBrowseOut = null!;
         private Button btnRun = null!;
         private Button btnCancel = null!;
+        private Button btnUpload = null!;
         private ProgressBar progress = null!;
         private TextBox txtLog = null!;
         // --- Processing state & config ---
         private readonly Processing _proc = new();
         private System.Threading.CancellationTokenSource? _cts;
         private AppConfig _cfg = null!;
+        private ProcResult? _lastResult;
         private MenuStrip menu = null!;
         private ToolStripMenuItem miSettings = null!;
         private ToolStripMenuItem miHistory  = null!;
@@ -85,8 +88,10 @@ namespace BirthdayExtractor
             btnBrowseOut.Click += (s, e) => BrowseOutDir();
             btnRun = new Button { Left = 140, Top = 172, Width = 120, Text = "Run" };
             btnCancel = new Button { Left = 270, Top = 172, Width = 120, Text = "Cancel", Enabled = false };
+            btnUpload = new Button { Left = 400, Top = 172, Width = 150, Text = "Upload to ERPNext", Enabled = false };
             btnRun.Click += async (s, e) => await RunAsync();
             btnCancel.Click += (s, e) => _cts?.Cancel();
+            btnUpload.Click += async (s, e) => await UploadAsync();
             progress = new ProgressBar { Left = 20, Top = 212, Width = 760, Height = 18, Style = ProgressBarStyle.Continuous, Minimum = 0, Maximum = 100, Value = 0 };
             txtLog = new TextBox { Left = 20, Top = 242, Width = 760, Height = 300, Multiline = true, ScrollBars = ScrollBars.Vertical, ReadOnly = true };
             // 6) Add to content panel (not the form)
@@ -96,7 +101,7 @@ namespace BirthdayExtractor
                 lblEnd, dtEnd,
                 chkCsv, chkXlsx,
                 lblOut, txtOutDir, btnBrowseOut,
-                btnRun, btnCancel,
+                btnRun, btnCancel, btnUpload,
                 progress, txtLog
             });
             // 7) Defaults pulled from config to pre-populate the form
@@ -401,10 +406,11 @@ namespace BirthdayExtractor
                 }
             }
             Directory.CreateDirectory(outDir);
-            btnRun.Enabled = false; btnCancel.Enabled = true; txtLog.Clear(); SetProgress(0);
+            btnRun.Enabled = false; btnCancel.Enabled = true; btnUpload.Enabled = false; txtLog.Clear(); SetProgress(0);
             Log("Started..."); // push initial marker before heavy lifting begins
             _cts = new System.Threading.CancellationTokenSource();
             var progressCb = new Progress<int>(p => SetProgress(p));
+            _lastResult = null;
             try
             {
                 var result = await Task.Run(() => _proc.Process(new ProcOptions
@@ -426,6 +432,12 @@ namespace BirthdayExtractor
                 Log($"Done. Kept {result.KeptCount} rows.");
                 if (result.CsvPath is not null) Log($"CSV : {result.CsvPath}");
                 if (result.XlsxPath is not null) Log($"XLSX: {result.XlsxPath}");
+                _lastResult = result;
+                if (result.Leads.Count > 0)
+                {
+                    Log("Upload to ERPNext is available for this run.");
+                    btnUpload.Enabled = true;
+                }
                 // ---- append to history ----
                 try
                 {
@@ -460,6 +472,10 @@ namespace BirthdayExtractor
             finally
             {
                 btnRun.Enabled = true; btnCancel.Enabled = false;
+                if (_lastResult?.Leads.Count > 0)
+                {
+                    btnUpload.Enabled = true;
+                }
                 _cts?.Dispose(); _cts = null;
             }
             dtStart.ValueChanged += (s, e) =>
@@ -467,6 +483,126 @@ namespace BirthdayExtractor
                 // keep length consistent with config
                 dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
             };
+        }
+
+        private async Task UploadAsync()
+        {
+            if (_lastResult?.Leads is null || _lastResult.Leads.Count == 0)
+            {
+                MessageBox.Show(this, "Run the extractor before uploading.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_cfg.ErpNextBaseUrl) ||
+                string.IsNullOrWhiteSpace(_cfg.ErpNextApiKey) ||
+                string.IsNullOrWhiteSpace(_cfg.ErpNextApiSecret))
+            {
+                MessageBox.Show(this, "Configure the ERPNext API settings in Settings before uploading.");
+                return;
+            }
+
+            var leads = _lastResult.Leads;
+            var leadsWithKeys = leads.Where(l => !string.IsNullOrWhiteSpace(l.BusinessKey)).ToList();
+            var missingKeyCount = leads.Count - leadsWithKeys.Count;
+            if (missingKeyCount > 0)
+            {
+                Log($"WARN: {missingKeyCount} lead(s) are missing a business key and will be skipped.");
+            }
+
+            var uploadCandidates = new List<ExtractedLead>(leadsWithKeys.Count);
+            int missingFieldSkips = 0;
+            foreach (var lead in leadsWithKeys)
+            {
+                var missingFields = ErpNextClient.GetMissingRequiredFields(lead);
+                if (missingFields.Count > 0)
+                {
+                    missingFieldSkips++;
+                    Log($"Skipping {lead.BusinessKey}: missing {string.Join(", ", missingFields)}.");
+                    continue;
+                }
+
+                uploadCandidates.Add(lead);
+            }
+
+            if (missingFieldSkips > 0)
+            {
+                Log($"Skipped {missingFieldSkips} lead(s) due to missing required fields.");
+            }
+
+            if (uploadCandidates.Count == 0)
+            {
+                Log("No leads with all required fields available for upload.");
+                return;
+            }
+
+            btnUpload.Enabled = false;
+            btnRun.Enabled = false;
+            btnCancel.Enabled = true;
+            var previousStyle = progress.Style;
+            progress.Style = ProgressBarStyle.Marquee;
+            progress.MarqueeAnimationSpeed = 30;
+            _cts = new System.Threading.CancellationTokenSource();
+            try
+            {
+                Log("Starting ERPNext upload...");
+                using var client = new ErpNextClient(_cfg.ErpNextBaseUrl!, _cfg.ErpNextApiKey!, _cfg.ErpNextApiSecret!);
+                var cancellation = _cts.Token;
+                var uniqueKeys = new HashSet<string>(uploadCandidates.Select(l => l.BusinessKey!), StringComparer.OrdinalIgnoreCase);
+                Log($"Collected {uniqueKeys.Count} unique business key(s) from this run.");
+                var existing = await client.FetchExistingKeysAsync(uniqueKeys, cancellation);
+                Log($"ERPNext already contains {existing.Count} matching lead(s).");
+                var toCreate = uploadCandidates.Where(l => !existing.Contains(l.BusinessKey)).ToList();
+                if (toCreate.Count == 0)
+                {
+                    Log("All leads already exist in ERPNext. Nothing to upload.");
+                    return;
+                }
+
+                int success = 0, failed = 0, index = 0;
+                var uploadStart = DateTime.Now;
+                foreach (var lead in toCreate)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    index++;
+                    try
+                    {
+                        await client.CreateLeadAsync(lead, uploadStart, cancellation);
+                        success++;
+                        var childDisplay = string.Join(" ", new[] { lead.ChildFirstName, lead.ChildLastName }
+                            .Where(s => !string.IsNullOrWhiteSpace(s)));
+                        if (string.IsNullOrWhiteSpace(childDisplay)) childDisplay = lead.BusinessKey;
+                        Log($"Uploaded {index}/{toCreate.Count}: {childDisplay}");
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        Log($"ERROR uploading {lead.BusinessKey}: {ex.Message}");
+                    }
+                }
+
+                Log($"Upload complete. Created {success} lead(s), skipped {existing.Count} duplicate(s), failed {failed}.");
+            }
+            catch (OperationCanceledException)
+            {
+                Log("Upload cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR during upload: " + ex.Message);
+            }
+            finally
+            {
+                progress.Style = previousStyle;
+                if (previousStyle == ProgressBarStyle.Continuous)
+                {
+                    SetProgress(0);
+                }
+                btnRun.Enabled = true;
+                btnCancel.Enabled = false;
+                btnUpload.Enabled = _lastResult?.Leads.Count > 0;
+                _cts?.Dispose();
+                _cts = null;
+            }
         }
     }
 }
