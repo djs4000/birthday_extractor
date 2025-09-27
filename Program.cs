@@ -93,7 +93,7 @@ namespace BirthdayExtractor
 
             var outputDir = parsed.TryGetValue("out", out var outDir) && !string.IsNullOrWhiteSpace(outDir)
                 ? outDir!
-                : (Path.GetDirectoryName(csvPath) ?? Environment.CurrentDirectory);
+                : (Path.GetDirectoryName(Path.GetFullPath(csvPath)) ?? Environment.CurrentDirectory);
 
             AppConfig config;
             try
