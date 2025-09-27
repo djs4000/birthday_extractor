@@ -11,7 +11,7 @@ namespace BirthdayExtractor
         /// <summary>
         /// Gets the human friendly version string.
         /// </summary>
-        public const string Display = "0.55";
+        public const string Display = "0.60";
 
         /// <summary>
         /// Gets the semantic <see cref="Version"/> representation used when
