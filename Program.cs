@@ -101,9 +101,10 @@ namespace BirthdayExtractor
             {
                 config = ConfigStore.LoadOrCreate() ?? new AppConfig();
             }
-            catch
+            catch (Exception ex)
             {
                 config = new AppConfig();
+                LogRouter.LogException(ex, "Failed to load configuration");
             }
 
             var writeCsv = GetFlag(parsed, "csv-out", config.DefaultWriteCsv) && !GetFlag(parsed, "no-csv-out");
@@ -206,6 +207,7 @@ namespace BirthdayExtractor
                     catch (Exception uploadEx)
                     {
                         Console.Error.WriteLine("ERROR during ERPNext upload: " + uploadEx.Message);
+                        LogRouter.LogException(uploadEx, "ERROR during ERPNext upload");
                         Environment.ExitCode = 1;
                         return true;
                     }
@@ -217,6 +219,7 @@ namespace BirthdayExtractor
             catch (Exception ex)
             {
                 Console.Error.WriteLine("ERROR: " + ex.Message);
+                LogRouter.LogException(ex, "ERROR");
                 Environment.ExitCode = 1;
             }
 
@@ -333,6 +336,7 @@ namespace BirthdayExtractor
             catch (Exception ex)
             {
                 Console.Error.WriteLine("WARN: Failed to record run history: " + ex.Message);
+                LogRouter.LogException(ex, "WARN: Failed to record run history");
             }
         }
 

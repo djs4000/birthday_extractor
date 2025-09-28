@@ -143,6 +143,10 @@ namespace BirthdayExtractor
                 {
                     failed++;
                     log($"ERROR uploading {lead.BusinessKey}: {ex.Message}");
+                    if (!LogRouter.IsRegisteredLogger(log))
+                    {
+                        LogRouter.LogException(ex, $"ERROR uploading {lead.BusinessKey}");
+                    }
                 }
             }
 

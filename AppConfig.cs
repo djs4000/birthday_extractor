@@ -48,6 +48,11 @@ namespace BirthdayExtractor
         /// </summary>
         public bool DefaultWriteXlsx { get; set; } = true;
 
+        /// <summary>
+        /// Controls whether diagnostic messages from background components are forwarded to the UI log.
+        /// </summary>
+        public bool VerboseLoggingEnabled { get; set; } = true;
+
         // --- Update and integration settings ---
 
         /// <summary>
@@ -204,16 +209,19 @@ namespace BirthdayExtractor
                 var cfg = JsonSerializer.Deserialize<AppConfig>(json, _jsonOpts);
                 return cfg ?? new AppConfig(); // Return new config if deserialization results in null.
             }
-            catch 
+            catch (Exception ex)
             {
-                // TODO: Log the exception to a file for easier debugging of config issues.
+                LogRouter.LogException(ex, "Failed to load configuration file");
                 // If the file is corrupted, back it up before creating a new one.
                 try
                 {
                     var backupPath = Path.ChangeExtension(path, $".bak_{DateTime.Now:yyyyMMddHHmmss}");
                     File.Copy(path, backupPath, overwrite: false);
                 }
-                catch { /* Ignore errors during backup creation */ }
+                catch (Exception backupEx)
+                {
+                    LogRouter.LogException(backupEx, "Failed to back up config file");
+                }
 
                 // Create and save a fresh configuration.
                 var cfg = new AppConfig();
