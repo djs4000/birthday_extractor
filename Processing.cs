@@ -510,10 +510,9 @@ namespace BirthdayExtractor
                     string noPlus = e164.StartsWith("+") ? e164.Substring(1) : e164;
                     return (noPlus, valid);
                 }
-                catch (NumberParseException)
+                catch (NumberParseException npex)
                 {
-                    // Silently fail here. Logging could be added if needed for debugging.
-                    // TODO: Propagate parsing errors to the main log for better diagnostics.
+                    LogRouter.LogException(npex, "Phone parsing failed");
                 }
             }
 
@@ -538,8 +537,16 @@ namespace BirthdayExtractor
                 using var _ = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
                 return false;
             }
-            catch (IOException) { return true; } // File is locked.
-            catch { return true; } // Another unexpected error occurred.
+            catch (IOException ioex)
+            {
+                LogRouter.LogException(ioex, "File lock detection failed");
+                return true; // File is locked.
+            }
+            catch (Exception ex)
+            {
+                LogRouter.LogException(ex, "Unexpected file lock error");
+                return true; // Another unexpected error occurred.
+            }
         }
 
         /// <summary>
@@ -610,7 +617,14 @@ namespace BirthdayExtractor
                 foreach (var h in headers)
                 {
                     string? v = null;
-                    try { v = csv.GetField(h); } catch { } // Suppress errors on missing fields.
+                    try
+                    {
+                        v = csv.GetField(h);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogRouter.LogException(ex, $"Failed to read CSV field '{h}'");
+                    }
                     dict[h] = string.IsNullOrWhiteSpace(v) ? null : v;
                 }
                 list.Add(new DynamicRow(dict));

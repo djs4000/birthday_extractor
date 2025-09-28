@@ -47,9 +47,10 @@ namespace BirthdayExtractor
             {
                 _cfg = ConfigStore.LoadOrCreate() ?? new AppConfig();
             }
-            catch
+            catch (Exception ex)
             {
                 _cfg = new AppConfig();
+                LogRouter.LogException(ex, "Failed to load configuration");
             }
             // sanity defaults if someone hand-edited config
             if (_cfg.DefaultWindowDays <= 0) _cfg.DefaultWindowDays = 7;
@@ -61,6 +62,7 @@ namespace BirthdayExtractor
             // 3) Build UI
             InitializeMenu();
             InitializeContentPanel();
+            LogRouter.RegisterUiLogger(Log);
 
             // 4) Defaults pulled from config to pre-populate the form
             dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
@@ -156,6 +158,16 @@ namespace BirthdayExtractor
             }
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                LogRouter.UnregisterUiLogger(Log);
+            }
+
+            base.Dispose(disposing);
+        }
+
         private async Task CheckForUpdatesAsync()
         {
             if (_cfg is null || !_cfg.EnableUpdateChecks)
@@ -228,7 +240,7 @@ namespace BirthdayExtractor
             }
             catch (Exception ex)
             {
-                Log("Update check failed: " + ex.Message);
+                LogRouter.LogException(ex, "Update check failed");
             }
         }
         /// <summary>
@@ -475,18 +487,19 @@ namespace BirthdayExtractor
                 }
                 catch (Exception hex)
                 {
-                    Log("WARN: Failed to log processed window: " + hex.Message);
+                    LogRouter.LogException(hex, "WARN: Failed to log processed window");
                 }
                 // ---------------------------
                 SetProgress(100);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException oce)
             {
                 Log("Cancelled by user.");
+                LogRouter.LogException(oce);
             }
             catch (Exception ex)
             {
-                Log("ERROR: " + ex.Message);
+                LogRouter.LogException(ex, "ERROR");
             }
             finally
             {
@@ -539,13 +552,14 @@ namespace BirthdayExtractor
                     Log,
                     _cts.Token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException oce)
             {
                 Log("Upload cancelled by user.");
+                LogRouter.LogException(oce, "Upload cancelled");
             }
             catch (Exception ex)
             {
-                Log("ERROR during upload: " + ex.Message);
+                LogRouter.LogException(ex, "ERROR during upload");
             }
             finally
             {
