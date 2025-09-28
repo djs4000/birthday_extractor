@@ -494,9 +494,10 @@ namespace BirthdayExtractor
             // If the heuristic fails, use the more general-purpose libphonenumber library if enabled.
             if (useLib)
             {
+                var cleanInput = input!.Trim();
                 try
                 {
-                    var cleanInput = input.Trim();
+                    //var cleanInput = input.Trim();
                     // Libphonenumber expects a '+' for international numbers.
                     if (cleanInput.StartsWith("00"))
                         cleanInput = "+" + cleanInput.Substring(2);
@@ -512,7 +513,7 @@ namespace BirthdayExtractor
                 }
                 catch (NumberParseException npex)
                 {
-                    LogRouter.LogException(npex, "Phone parsing failed");
+                    LogRouter.LogException(npex, "Phone parsing failed: " + cleanInput);
                 }
             }
 
