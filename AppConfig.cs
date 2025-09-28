@@ -48,6 +48,11 @@ namespace BirthdayExtractor
         /// </summary>
         public bool DefaultWriteXlsx { get; set; } = true;
 
+        /// <summary>
+        /// Controls whether diagnostic messages from background components are forwarded to the UI log.
+        /// </summary>
+        public bool VerboseLoggingEnabled { get; set; } = true;
+
         // --- Update and integration settings ---
 
         /// <summary>

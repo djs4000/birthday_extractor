@@ -15,6 +15,7 @@ namespace BirthdayExtractor
         private CheckBox chkCsv = null!;
         private CheckBox chkXlsx = null!;
         private CheckBox chkUseLibPhone = null!;   // <— add this
+        private CheckBox chkVerboseLogging = null!;
         private TextBox txtWebhookUrl = null!;
         private TextBox txtWebhookAuth = null!;
         private TextBox txtErpUrl = null!;
@@ -79,6 +80,18 @@ namespace BirthdayExtractor
                 Checked = _cfg.EnableUpdateChecks
             };
             Controls.Add(chkUpdateChecks);
+            y += 30;
+
+            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Logging:" });
+            chkVerboseLogging = new CheckBox
+            {
+                Left = 260,
+                Top = y,
+                Width = 240,
+                Text = "Verbose background logging",
+                Checked = _cfg.VerboseLoggingEnabled
+            };
+            Controls.Add(chkVerboseLogging);
             y += 30;
 
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "GitHub token (optional):" });
@@ -163,6 +176,7 @@ namespace BirthdayExtractor
             _cfg.ErpNextApiSecret       = string.IsNullOrWhiteSpace(txtErpApiSecret.Text) ? null : txtErpApiSecret.Text.Trim();
             _cfg.UseLibPhoneNumber      = chkUseLibPhone.Checked;
             _cfg.EnableUpdateChecks     = chkUpdateChecks.Checked;
+            _cfg.VerboseLoggingEnabled  = chkVerboseLogging.Checked;
             _cfg.GitHubToken            = string.IsNullOrWhiteSpace(txtGitHubToken.Text) ? null : txtGitHubToken.Text.Trim();
             ConfigStore.Save(_cfg);
             DialogResult = DialogResult.OK;

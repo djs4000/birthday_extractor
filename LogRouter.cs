@@ -12,6 +12,7 @@ namespace BirthdayExtractor
         private static readonly object _sync = new();
         private static readonly Queue<string> _pending = new();
         private static Action<string>? _uiLog;
+        private static bool _verboseEnabled = true;
 
         /// <summary>
         /// Registers the UI log sink so background components can forward messages to the text box.
@@ -25,17 +26,23 @@ namespace BirthdayExtractor
             }
 
             List<string>? flush = null;
+            var flushMessages = false;
             lock (_sync)
             {
                 _uiLog = log;
-                if (_pending.Count > 0)
+                if (!_verboseEnabled)
+                {
+                    _pending.Clear();
+                }
+                else if (_pending.Count > 0)
                 {
                     flush = new List<string>(_pending);
                     _pending.Clear();
+                    flushMessages = true;
                 }
             }
 
-            if (flush is not null)
+            if (flushMessages && flush is not null)
             {
                 foreach (var message in flush)
                 {
@@ -76,6 +83,11 @@ namespace BirthdayExtractor
             Action<string>? logger;
             lock (_sync)
             {
+                if (!_verboseEnabled)
+                {
+                    return;
+                }
+
                 logger = _uiLog;
                 if (logger is null)
                 {
@@ -118,6 +130,22 @@ namespace BirthdayExtractor
                 ? ex.Message
                 : $"{trimmedContext}{(trimmedContext.EndsWith(':') ? string.Empty : ":")} {ex.Message}";
             LogMessage(formatted);
+        }
+
+        /// <summary>
+        /// Enables or disables forwarding of log messages to the UI text box.
+        /// When disabled, queued messages are discarded.
+        /// </summary>
+        public static void SetVerboseLoggingEnabled(bool enabled)
+        {
+            lock (_sync)
+            {
+                _verboseEnabled = enabled;
+                if (!enabled)
+                {
+                    _pending.Clear();
+                }
+            }
         }
     }
 }

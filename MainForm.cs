@@ -54,6 +54,7 @@ namespace BirthdayExtractor
             }
             // sanity defaults if someone hand-edited config
             if (_cfg.DefaultWindowDays <= 0) _cfg.DefaultWindowDays = 7;
+            LogRouter.SetVerboseLoggingEnabled(_cfg.VerboseLoggingEnabled);
             // 2) Form shell: establish window chrome before wiring controls
             Text = $"Birthday Extractor v{AppVersion.Display}";
             Width = 820; Height = 600;
@@ -154,6 +155,7 @@ namespace BirthdayExtractor
                 dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
                 chkCsv.Checked  = _cfg.DefaultWriteCsv;
                 chkXlsx.Checked = _cfg.DefaultWriteXlsx;
+                LogRouter.SetVerboseLoggingEnabled(_cfg.VerboseLoggingEnabled);
                 Log("Settings saved.");
             }
         }
