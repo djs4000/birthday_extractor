@@ -462,9 +462,6 @@ namespace BirthdayExtractor
                     Log = Log,
                     Cancellation = _cts.Token
                 }), _cts.Token);
-                Log($"Done. Kept {result.KeptCount} rows.");
-                if (result.CsvPath is not null) Log($"CSV : {result.CsvPath}");
-                if (result.XlsxPath is not null) Log($"XLSX: {result.XlsxPath}");
                 _lastResult = result;
                 if (result.Leads.Count > 0)
                 {
