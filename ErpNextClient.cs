@@ -209,8 +209,8 @@ namespace BirthdayExtractor
             {
                 ["doctype"] = "Lead",
                 ["naming_series"] = "CRM-LEAD-.YYYY.-",
-                ["source"] = "Outbound", // TODO: Make this configurable.
-                ["status"] = "Initial Contact", // TODO: Make this configurable.
+                ["source"] = "Outbound", 
+                ["status"] = "Initial Contact", 
                 ["first_name"] = parentFirst,
                 ["last_name"] = parentLast,
                 ["mobile_no"] = phone,
