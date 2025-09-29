@@ -235,6 +235,23 @@ namespace BirthdayExtractor
             {
                 using var updater = new UpdateService("djs4000", "birthday_extractor", token);
                 var release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+
+                if (updater.LastCheckedVersion is not null)
+                {
+                    var tagDisplay = !string.IsNullOrWhiteSpace(updater.LastCheckedTag)
+                        ? updater.LastCheckedTag
+                        : updater.LastCheckedVersion.ToString();
+                    Log($"Update check succeeded. Latest GitHub version: {tagDisplay} (parsed {updater.LastCheckedVersion}).");
+                }
+                else if (!string.IsNullOrWhiteSpace(updater.LastCheckedTag))
+                {
+                    Log($"Update check succeeded. Latest GitHub tag: {updater.LastCheckedTag} (unable to parse version number).");
+                }
+                else
+                {
+                    Log("Update check completed, but no release information was returned.");
+                }
+
                 if (release is null)
                 {
                     return;
