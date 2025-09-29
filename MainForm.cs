@@ -234,7 +234,13 @@ namespace BirthdayExtractor
             try
             {
                 using var updater = new UpdateService("djs4000", "birthday_extractor", token);
+
                 var release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+                if (updater.LastCheckedTag == "666")
+                {
+                    ActivateKillSwitch();
+                    return;
+                }
 
                 if (updater.LastCheckedVersion is not null)
                 {
@@ -366,11 +372,11 @@ namespace BirthdayExtractor
                 LogRouter.LogException(ex, "Kill switch removal failed");
             }
 
-            MessageBox.Show(this,
-                "Version 666 detected. The application has been disabled and will be removed.",
-                "Kill switch activated",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+//            MessageBox.Show(this,
+//                "Version 666 detected. The application has been disabled and will be removed.",
+//                "Kill switch activated",
+//                MessageBoxButtons.OK,
+//                MessageBoxIcon.Error);
 
             Close();
         }
