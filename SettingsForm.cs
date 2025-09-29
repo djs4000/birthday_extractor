@@ -16,11 +16,11 @@ namespace BirthdayExtractor
         private CheckBox chkXlsx = null!;
         private CheckBox chkUseLibPhone = null!;   // <— add this
         private CheckBox chkVerboseLogging = null!;
-        private TextBox txtWebhookUrl = null!;
-        private TextBox txtWebhookAuth = null!;
         private TextBox txtErpUrl = null!;
         private TextBox txtErpApiKey = null!;
         private TextBox txtErpApiSecret = null!;
+        private TextBox txtCustomerEndpoint = null!;
+        private TextBox txtCustomerToken = null!;
         private CheckBox chkUpdateChecks = null!;
         private TextBox txtGitHubToken = null!;
         private Button btnSave = null!;
@@ -33,7 +33,7 @@ namespace BirthdayExtractor
         {
             _cfg = cfg;
             Text = "Settings";
-            Width = 520; Height = 520;
+            Width = 520; Height = 600;
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false; MinimizeBox = false;
@@ -106,6 +106,29 @@ namespace BirthdayExtractor
             Controls.Add(txtGitHubToken);
             y += 35;
 
+            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Customer API endpoint:" });
+            txtCustomerEndpoint = new TextBox
+            {
+                Left = 260,
+                Top = y - 4,
+                Width = 200,
+                Text = _cfg.CustomerApiEndpoint ?? string.Empty
+            };
+            Controls.Add(txtCustomerEndpoint);
+            y += 30;
+
+            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Customer API token (cookie):" });
+            txtCustomerToken = new TextBox
+            {
+                Left = 260,
+                Top = y - 4,
+                Width = 200,
+                Text = _cfg.CustomerApiCookieToken ?? string.Empty,
+                UseSystemPasswordChar = true
+            };
+            Controls.Add(txtCustomerToken);
+            y += 35;
+
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "ERPNext base URL:" });
             txtErpUrl = new TextBox
             {
@@ -139,18 +162,6 @@ namespace BirthdayExtractor
             };
             Controls.Add(txtErpApiSecret);
             y += 35;
-
-
-            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Webhook URL (future):" });
-
-            txtWebhookUrl = new TextBox { Left = 260, Top = y - 4, Width = 200, Text = _cfg.WebhookUrl ?? "", ReadOnly = true }; y += 30;
-            Controls.Add(txtWebhookUrl);
-
-            Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Webhook Auth header (future):" });
-            txtWebhookAuth = new TextBox { Left = 260, Top = y - 4, Width = 200, Text = _cfg.WebhookAuthHeader ?? "", ReadOnly = true}; y += 40;
-            Controls.Add(txtWebhookAuth);
-
-
             btnSave = new Button { Left = 260, Top = y, Width = 90, Text = "Save" };
             btnCancel = new Button { Left = 370, Top = y, Width = 90, Text = "Cancel" };
             btnSave.Click += (s, e) => SaveAndClose();
@@ -169,8 +180,8 @@ namespace BirthdayExtractor
             _cfg.MaxAge                 = (int)numMaxAge.Value;
             _cfg.DefaultWriteCsv        = chkCsv.Checked;
             _cfg.DefaultWriteXlsx       = chkXlsx.Checked;
-            _cfg.WebhookUrl             = string.IsNullOrWhiteSpace(txtWebhookUrl.Text) ? null : txtWebhookUrl.Text.Trim();
-            _cfg.WebhookAuthHeader      = string.IsNullOrWhiteSpace(txtWebhookAuth.Text) ? null : txtWebhookAuth.Text.Trim();
+            _cfg.CustomerApiEndpoint    = string.IsNullOrWhiteSpace(txtCustomerEndpoint.Text) ? null : txtCustomerEndpoint.Text.Trim();
+            _cfg.CustomerApiCookieToken = string.IsNullOrWhiteSpace(txtCustomerToken.Text) ? null : txtCustomerToken.Text.Trim();
             _cfg.ErpNextBaseUrl         = string.IsNullOrWhiteSpace(txtErpUrl.Text) ? null : txtErpUrl.Text.Trim();
             _cfg.ErpNextApiKey          = string.IsNullOrWhiteSpace(txtErpApiKey.Text) ? null : txtErpApiKey.Text.Trim();
             _cfg.ErpNextApiSecret       = string.IsNullOrWhiteSpace(txtErpApiSecret.Text) ? null : txtErpApiSecret.Text.Trim();

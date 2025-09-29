@@ -71,6 +71,17 @@ namespace BirthdayExtractor
         /// </summary>
         public string? LastCsvFolder { get; set; }
 
+        /// <summary>
+        /// Optional endpoint that can be queried to download customer data instead of using a CSV file.
+        /// </summary>
+        public string? CustomerApiEndpoint { get; set; }
+
+        /// <summary>
+        /// Authentication token (sent via the Cookie header) used when downloading customer data from the API.
+        /// TODO: Encrypt this value before saving to disk.
+        /// </summary>
+        public string? CustomerApiCookieToken { get; set; }
+
         // --- ERPNext Integration Settings (Webhook and REST API) ---
 
         /// <summary>
