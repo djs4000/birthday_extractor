@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -676,6 +677,14 @@ namespace BirthdayExtractor
         {
             try
             {
+                var assembly = typeof(MainForm).Assembly;
+                using var iconStream = assembly.GetManifestResourceStream("BirthdayExtractor.birthdaycake.ico");
+                if (iconStream != null)
+                {
+                    Icon = new Icon(iconStream);
+                    return;
+                }
+
                 var iconPath = Path.Combine(AppContext.BaseDirectory, "birthdaycake.ico");
                 if (File.Exists(iconPath))
                 {
