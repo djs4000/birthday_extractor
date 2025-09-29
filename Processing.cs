@@ -5,15 +5,28 @@ namespace BirthdayExtractor
     using System;
     using System.Collections.Generic;
     using System.Globalization;
+    using System.Net.Http;
+    using System.Net.Http.Headers;
     using System.IO;
     using System.Linq;
     using System.Text;
+    using System.Text.Json;
     using System.Threading;
+    using System.Threading.Tasks;
     // Third-party libraries for CSV parsing, phone number handling, and Excel file creation.
     using CsvHelper;
     using CsvHelper.Configuration;
     using PhoneNumbers;
     using ClosedXML.Excel;
+
+    /// <summary>
+    /// Supported input data sources for the extraction pipeline.
+    /// </summary>
+    public enum DataSourceType
+    {
+        Csv,
+        Online
+    }
 
     /// <summary>
     /// Strongly-typed container for user input options that drive a single extraction run.
@@ -22,9 +35,21 @@ namespace BirthdayExtractor
     public sealed class ProcOptions
     {
         /// <summary>
+        /// Specifies where the raw customer data should be read from.
+        /// </summary>
+        public DataSourceType DataSource { get; set; } = DataSourceType.Csv;
+        /// <summary>
         /// Path to the exported customer CSV that will be parsed.
         /// </summary>
         public string CsvPath { get; set; } = string.Empty;
+        /// <summary>
+        /// Endpoint used when pulling customer data from an online source.
+        /// </summary>
+        public string? RemoteEndpoint { get; set; }
+        /// <summary>
+        /// Authentication token (sent via the Cookie header) when using the online data source.
+        /// </summary>
+        public string? RemoteCookieToken { get; set; }
         /// <summary>
         /// Beginning of the inclusive birthday window that should be reported on.
         /// </summary>
@@ -189,11 +214,29 @@ namespace BirthdayExtractor
             // Ensure the operation hasn't been cancelled before starting.
             o.Cancellation.ThrowIfCancellationRequested();
             // Log initial parameters for debugging and traceability.
-            o.Log?.Invoke($"CSV = {o.CsvPath}");
             o.Log?.Invoke($"Start = {o.Start:yyyy-MM-dd}, End = {o.End:yyyy-MM-dd}");
 
-            // Step 1: Read the raw CSV data.
-            var rowsDyn = ReadCsv(o.CsvPath, out bool hasVisitorType);
+            // Step 1: Read the raw data from either CSV or online source.
+            DynamicRow[] rowsDyn;
+            bool hasVisitorType;
+            switch (o.DataSource)
+            {
+                case DataSourceType.Csv:
+                    if (string.IsNullOrWhiteSpace(o.CsvPath))
+                        throw new InvalidOperationException("CSV path is required when using the CSV data source.");
+                    o.Log?.Invoke($"CSV = {o.CsvPath}");
+                    rowsDyn = ReadCsv(o.CsvPath, out hasVisitorType);
+                    break;
+                case DataSourceType.Online:
+                    if (string.IsNullOrWhiteSpace(o.RemoteEndpoint) || string.IsNullOrWhiteSpace(o.RemoteCookieToken))
+                        throw new InvalidOperationException("Remote endpoint and authentication token are required when using the online data source.");
+                    o.Log?.Invoke("Requesting customers from configured API...");
+                    (rowsDyn, hasVisitorType) = ReadOnlineCustomers(o.RemoteEndpoint, o.RemoteCookieToken, o.Log, o.Cancellation);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(o.DataSource), o.DataSource, "Unsupported data source");
+            }
+
             o.Log?.Invoke($"Loaded {rowsDyn.Length:n0} rows. Visitor Type present: {hasVisitorType}");
             ReportProgress(o, 5);
 
@@ -577,6 +620,82 @@ namespace BirthdayExtractor
             return tsPath;
         }
 
+        private static (DynamicRow[] Rows, bool HasVisitorType) ReadOnlineCustomers(
+            string endpoint,
+            string cookieToken,
+            Action<string>? log,
+            CancellationToken cancellation)
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            request.Headers.TryAddWithoutValidation("Content-Type", "application/json");
+            request.Headers.TryAddWithoutValidation("Cookie", cookieToken);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation)
+                    .GetAwaiter().GetResult();
+            }
+            catch (TaskCanceledException ex) when (cancellation.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("Cancelled while requesting customer data.", ex, cancellation);
+            }
+
+            using (response)
+            {
+                if (!response.IsSuccessStatusCode)
+                {
+                    string? body = null;
+                    try
+                    {
+                        body = response.Content.ReadAsStringAsync(cancellation).GetAwaiter().GetResult();
+                    }
+                    catch (Exception)
+                    {
+                        // Ignore secondary errors while capturing the body for diagnostics.
+                    }
+                    throw new InvalidOperationException($"Online data source returned {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
+                }
+
+                using var stream = response.Content.ReadAsStream(cancellation);
+                using var doc = JsonDocument.Parse(stream);
+                if (!doc.RootElement.TryGetProperty("customers", out var customersElement) || customersElement.ValueKind != JsonValueKind.Array)
+                {
+                    throw new InvalidOperationException("Online data source response did not include a 'customers' array.");
+                }
+
+                var rows = new List<DynamicRow>();
+                bool hasVisitorType = false;
+                foreach (var element in customersElement.EnumerateArray())
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["First Name"] = NullIfWhiteSpace(TryGetString(element, "firstname")),
+                        ["Last Name"] = NullIfWhiteSpace(TryGetString(element, "lastname")),
+                        ["Email"] = NullIfWhiteSpace(TryGetString(element, "email")),
+                        ["Mobile Number"] = NullIfWhiteSpace(TryGetString(element, "mobile_number")),
+                        ["Date of Birth"] = NullIfWhiteSpace(TryGetString(element, "date_of_birth"))
+                    };
+
+                    var visitorType = NullIfWhiteSpace(TryGetString(element, "visitor_type"));
+                    if (!string.IsNullOrEmpty(visitorType))
+                    {
+                        map["Visitor Type"] = visitorType;
+                        hasVisitorType = true;
+                    }
+
+                    rows.Add(new DynamicRow(map));
+                }
+
+                log?.Invoke($"Downloaded {rows.Count:n0} customer records from API.");
+
+                return (rows.ToArray(), hasVisitorType);
+            }
+        }
+
         /// <summary>
         /// Reads the raw CSV into dynamic rows, automatically detecting the delimiter and encoding.
         /// It also checks for the presence of the optional "Visitor Type" column.
@@ -632,6 +751,24 @@ namespace BirthdayExtractor
             }
             return list.ToArray();
         }
+
+        private static string? TryGetString(JsonElement element, string propertyName)
+        {
+            if (element.ValueKind == JsonValueKind.Null || element.ValueKind == JsonValueKind.Undefined)
+                return null;
+
+            if (!element.TryGetProperty(propertyName, out var property) ||
+                property.ValueKind == JsonValueKind.Null ||
+                property.ValueKind == JsonValueKind.Undefined)
+            {
+                return null;
+            }
+
+            return property.ToString();
+        }
+
+        private static string? NullIfWhiteSpace(string? value)
+            => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
         /// <summary>
         /// Peeks at the beginning of a stream to detect the file encoding from Byte Order Marks (BOM).

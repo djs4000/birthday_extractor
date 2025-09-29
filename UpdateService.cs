@@ -21,6 +21,10 @@ namespace BirthdayExtractor
         private readonly bool _hasPersonalAccessToken;
         private readonly string _apiEndpoint;
 
+        public Version? LastCheckedVersion { get; private set; }
+
+        public string? LastCheckedTag { get; private set; }
+
         public UpdateService(string repoOwner, string repoName, string? personalAccessToken, HttpClient? client = null)
         {
             _httpClient = client ?? CreateHttpClient(personalAccessToken);
@@ -44,6 +48,9 @@ namespace BirthdayExtractor
         /// </summary>
         public async Task<ReleaseInfo?> CheckForNewerReleaseAsync(Version currentVersion, CancellationToken cancellationToken)
         {
+            LastCheckedVersion = null;
+            LastCheckedTag = null;
+
             using var request = new HttpRequestMessage(HttpMethod.Get, _apiEndpoint);
             using var response = await _httpClient.SendAsync(request, cancellationToken);
 
@@ -65,7 +72,9 @@ namespace BirthdayExtractor
             var tag = root.GetProperty("tag_name").GetString();
             if (string.IsNullOrWhiteSpace(tag)) return null;
 
-            var versionText = tag.Trim();
+            LastCheckedTag = tag.Trim();
+
+            var versionText = LastCheckedTag;
             if (versionText.StartsWith("v", true, CultureInfo.InvariantCulture))
             {
                 versionText = versionText[1..];
@@ -75,6 +84,8 @@ namespace BirthdayExtractor
             {
                 return null;
             }
+
+            LastCheckedVersion = latestVersion;
 
             if (latestVersion <= currentVersion)
             {

