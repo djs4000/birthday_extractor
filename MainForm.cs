@@ -109,39 +109,44 @@ namespace BirthdayExtractor
             {
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
-                Padding = new Padding(10, menu.Height + 10, 10, 10)
+                Padding = new Padding(10)
             };
             Controls.Add(content);
+            var menuHeight = menu?.GetPreferredSize(Size.Empty).Height
+                             ?? menu?.Height
+                             ?? 24;
+            int topOffset = menuHeight + 6;
+            int Offset(int baseTop) => topOffset + baseTop;
             // 5) Build your controls (labels, inputs, and action buttons)
-            var lblSource = new Label { Left = 20, Top = 12, Width = 120, Text = "Data Source:" };
-            rbSourceCsv = new RadioButton { Left = 140, Top = 10, Width = 150, Text = "Load from CSV", Checked = true };
-            rbSourceOnline = new RadioButton { Left = 300, Top = 10, Width = 220, Text = "Load from online source" };
+            var lblSource = new Label { Left = 20, Top = Offset(12), Width = 120, Text = "Data Source:" };
+            rbSourceCsv = new RadioButton { Left = 140, Top = Offset(10), Width = 150, Text = "Load from CSV", Checked = true };
+            rbSourceOnline = new RadioButton { Left = 300, Top = Offset(10), Width = 220, Text = "Load from online source" };
             rbSourceCsv.CheckedChanged += (s, e) => UpdateSourceUiState();
             rbSourceOnline.CheckedChanged += (s, e) => UpdateSourceUiState();
-            var lblCsv = new Label { Left = 20, Top = 40, Width = 120, Text = "CSV File:" };
-            txtCsv = new TextBox { Left = 140, Top = 36, Width = 540, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            btnBrowseCsv = new Button { Left = 690, Top = 34, Width = 90, Text = "Browse...", Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            var lblCsv = new Label { Left = 20, Top = Offset(40), Width = 120, Text = "CSV File:" };
+            txtCsv = new TextBox { Left = 140, Top = Offset(36), Width = 540, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            btnBrowseCsv = new Button { Left = 690, Top = Offset(34), Width = 90, Text = "Browse...", Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnBrowseCsv.Click += (s, e) => BrowseCsv();
-            var lblStart = new Label { Left = 20, Top = 70, Width = 120, Text = "Start Date:" };
-            dtStart = new DateTimePicker { Left = 140, Top = 66, Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
-            dtEnd = new DateTimePicker { Left = 440, Top = 66, Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd", Anchor = AnchorStyles.Top | AnchorStyles.Right };
-            lblEnd = new Label { Left = 360, Top = 70, Width = 60, Text = "End Date:", Anchor = AnchorStyles.Top | AnchorStyles.Right };
-            chkCsv = new CheckBox { Left = 140, Top = 96, Width = 80, Text = "CSV" };
-            chkXlsx = new CheckBox { Left = 230, Top = 96, Width = 80, Text = "XLSX" };
-            var lblOut = new Label { Left = 20, Top = 136, Width = 120, Text = "Output Folder:" };
-            txtOutDir = new TextBox { Left = 140, Top = 132, Width = 540, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            btnBrowseOut = new Button { Left = 690, Top = 130, Width = 90, Text = "Browse...", Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            var lblStart = new Label { Left = 20, Top = Offset(70), Width = 120, Text = "Start Date:" };
+            dtStart = new DateTimePicker { Left = 140, Top = Offset(66), Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
+            dtEnd = new DateTimePicker { Left = 440, Top = Offset(66), Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd" };
+            lblEnd = new Label { Left = 360, Top = Offset(70), Width = 60, Text = "End Date:" };
+            chkCsv = new CheckBox { Left = 140, Top = Offset(96), Width = 80, Text = "CSV" };
+            chkXlsx = new CheckBox { Left = 230, Top = Offset(96), Width = 80, Text = "XLSX" };
+            var lblOut = new Label { Left = 20, Top = Offset(136), Width = 120, Text = "Output Folder:" };
+            txtOutDir = new TextBox { Left = 140, Top = Offset(132), Width = 540, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            btnBrowseOut = new Button { Left = 690, Top = Offset(130), Width = 90, Text = "Browse...", Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnBrowseOut.Click += (s, e) => BrowseOutDir();
-            btnRun = new Button { Left = 140, Top = 172, Width = 120, Text = "Run" };
-            btnCancel = new Button { Left = 270, Top = 172, Width = 120, Text = "Cancel", Enabled = false };
-            btnUpload = new Button { Left = 400, Top = 172, Width = 150, Text = "Upload to ERPNext", Enabled = false, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            btnRun = new Button { Left = 140, Top = Offset(172), Width = 120, Text = "Run" };
+            btnCancel = new Button { Left = 270, Top = Offset(172), Width = 120, Text = "Cancel", Enabled = false };
+            btnUpload = new Button { Left = 400, Top = Offset(172), Width = 150, Text = "Upload to ERPNext", Enabled = false };
             btnRun.Click += async (s, e) => await RunAsync();
             btnCancel.Click += (s, e) => _cts?.Cancel();
             btnUpload.Click += async (s, e) => await UploadAsync();
             progress = new ProgressBar
             {
                 Left = 20,
-                Top = 212,
+                Top = Offset(212),
                 Width = 760,
                 Height = 18,
                 Style = ProgressBarStyle.Continuous,
@@ -153,7 +158,7 @@ namespace BirthdayExtractor
             txtLog = new TextBox
             {
                 Left = 20,
-                Top = 242,
+                Top = Offset(242),
                 Width = 760,
                 Height = 300,
                 Multiline = true,
@@ -172,9 +177,6 @@ namespace BirthdayExtractor
                 btnRun, btnCancel, btnUpload,
                 progress, txtLog
             });
-
-            content.Resize += (_, __) => LayoutContent();
-            LayoutContent();
         }
 
         /// <inheritdoc />
@@ -479,59 +481,6 @@ namespace BirthdayExtractor
             }
         }
 
-        private void LayoutContent()
-        {
-            if (content is null) return;
-
-            int rightEdge = content.ClientSize.Width - content.Padding.Right;
-            int bottomEdge = content.ClientSize.Height - content.Padding.Bottom;
-
-            if (btnBrowseCsv != null)
-            {
-                btnBrowseCsv.Left = Math.Max(content.Padding.Left, rightEdge - btnBrowseCsv.Width);
-            }
-
-            if (txtCsv != null && btnBrowseCsv != null)
-            {
-                txtCsv.Width = Math.Max(120, btnBrowseCsv.Left - 10 - txtCsv.Left);
-            }
-
-            if (btnBrowseOut != null)
-            {
-                btnBrowseOut.Left = Math.Max(content.Padding.Left, rightEdge - btnBrowseOut.Width);
-            }
-
-            if (txtOutDir != null && btnBrowseOut != null)
-            {
-                txtOutDir.Width = Math.Max(120, btnBrowseOut.Left - 10 - txtOutDir.Left);
-            }
-
-            if (dtEnd != null)
-            {
-                dtEnd.Left = Math.Max(dtStart.Left + dtStart.Width + 20, rightEdge - dtEnd.Width);
-            }
-
-            if (lblEnd != null && dtEnd != null)
-            {
-                lblEnd.Left = dtEnd.Left - lblEnd.Width - 10;
-            }
-
-            if (btnUpload != null && btnCancel != null)
-            {
-                btnUpload.Left = Math.Max(btnCancel.Right + 10, rightEdge - btnUpload.Width);
-            }
-
-            if (progress != null)
-            {
-                progress.Width = Math.Max(120, rightEdge - progress.Left);
-            }
-
-            if (txtLog != null)
-            {
-                txtLog.Width = Math.Max(120, rightEdge - txtLog.Left);
-                txtLog.Height = Math.Max(120, bottomEdge - txtLog.Top);
-            }
-        }
         /// <summary>
         /// Thread-safe log helper that timestamps status messages in the UI.
         /// </summary>
