@@ -31,7 +31,7 @@ namespace BirthdayExtractor
         private Button btnCancel = null!;
         private Button btnUpload = null!;
         private ProgressBar progress = null!;
-        private TextBox txtLog = null!;
+        private RichTextBox txtLog = null!;
         private Label lblEnd = null!;
         // --- Processing state & config ---
         private readonly Processing _proc = new();
@@ -64,6 +64,7 @@ namespace BirthdayExtractor
             Width = 820; Height = 600;
             MinimumSize = new Size(820, 600);
             StartPosition = FormStartPosition.CenterScreen;
+            TryApplyWindowIcon();
 
             // 3) Build UI
             InitializeMenu();
@@ -155,17 +156,19 @@ namespace BirthdayExtractor
                 Value = 0,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            txtLog = new TextBox
+            txtLog = new RichTextBox
             {
                 Left = 20,
                 Top = Offset(242),
                 Width = 760,
                 Height = 260,
                 Multiline = true,
-                ScrollBars = ScrollBars.Vertical,
+                ScrollBars = RichTextBoxScrollBars.Vertical,
                 ReadOnly = true,
+                DetectUrls = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
+            txtLog.LinkClicked += (s, e) => OpenLogLink(e.LinkText);
             // 6) Add to content panel (not the form)
             content.Controls.AddRange(new Control[] {
                 lblSource, rbSourceCsv, rbSourceOnline,
@@ -578,7 +581,145 @@ namespace BirthdayExtractor
         private void Log(string message)
         {
             if (txtLog.InvokeRequired) { txtLog.Invoke(new Action<string>(Log), message); return; }
-            txtLog.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
+
+            var timestamp = $"{DateTime.Now:HH:mm:ss}  ";
+            if (TryFormatFileLog(message, out var formatted))
+            {
+                txtLog.AppendText($"{timestamp}{formatted}{Environment.NewLine}");
+            }
+            else
+            {
+                txtLog.AppendText($"{timestamp}{message}{Environment.NewLine}");
+            }
+        }
+
+        private static bool TryFormatFileLog(string message, out string formatted)
+        {
+            formatted = string.Empty;
+
+            if (!TryExtractFileLog(message, out var prefix, out var path, out var fileLink))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(fileLink) && !string.Equals(path, fileLink, StringComparison.OrdinalIgnoreCase))
+            {
+                formatted = $"{prefix} {path} ({fileLink})";
+            }
+            else
+            {
+                formatted = $"{prefix} {path}";
+            }
+
+            return true;
+        }
+
+        private static bool TryExtractFileLog(string message, out string prefix, out string path, out string? fileLink)
+        {
+            prefix = string.Empty;
+            path = string.Empty;
+            fileLink = null;
+
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            const string csvPrefix = "Wrote CSV:";
+            const string xlsxPrefix = "Wrote XLSX:";
+            string? detectedPrefix = null;
+
+            if (message.StartsWith(csvPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                detectedPrefix = csvPrefix;
+            }
+            else if (message.StartsWith(xlsxPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                detectedPrefix = xlsxPrefix;
+            }
+
+            if (detectedPrefix is null)
+            {
+                return false;
+            }
+
+            var trimmed = message[detectedPrefix.Length..].Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                return false;
+            }
+
+            prefix = detectedPrefix;
+            path = trimmed;
+
+            if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && uri.IsFile)
+            {
+                fileLink = uri.AbsoluteUri;
+                return true;
+            }
+
+            try
+            {
+                var fullPath = Path.GetFullPath(trimmed);
+                var fileUri = new Uri(fullPath);
+                fileLink = fileUri.AbsoluteUri;
+            }
+            catch
+            {
+                fileLink = null;
+            }
+
+            return true;
+        }
+
+        private void TryApplyWindowIcon()
+        {
+            try
+            {
+                var iconPath = Path.Combine(AppContext.BaseDirectory, "birthdaycake.ico");
+                if (File.Exists(iconPath))
+                {
+                    Icon = new Icon(iconPath);
+                }
+            }
+            catch (Exception iconEx)
+            {
+                LogRouter.LogException(iconEx, "WARN: Failed to apply window icon");
+            }
+        }
+
+        private static void OpenLogLink(string linkText)
+        {
+            if (string.IsNullOrWhiteSpace(linkText))
+            {
+                return;
+            }
+
+            try
+            {
+                if (Uri.TryCreate(linkText, UriKind.Absolute, out var uri) && uri.IsFile)
+                {
+                    var localPath = uri.LocalPath;
+                    if (File.Exists(localPath))
+                    {
+                        Process.Start(new ProcessStartInfo(localPath) { UseShellExecute = true });
+                        return;
+                    }
+                }
+
+                if (File.Exists(linkText))
+                {
+                    Process.Start(new ProcessStartInfo(linkText) { UseShellExecute = true });
+                }
+                else
+                {
+                    Process.Start(new ProcessStartInfo(linkText) { UseShellExecute = true });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogRouter.LogException(ex, "WARN: Failed to open link from log");
+            }
         }
         /// <summary>
         /// Safely updates the progress bar from background threads.
