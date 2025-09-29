@@ -56,19 +56,33 @@ namespace BirthdayExtractor
                 return false;
             }
 
-            if (!parsed.TryGetValue("csv", out var csvPath) || string.IsNullOrWhiteSpace(csvPath))
-            {
-                Console.Error.WriteLine("ERROR: --csv <path> is required when running in silent mode.");
-                PrintUsage();
-                Environment.ExitCode = 1;
-                return true;
-            }
+            var useOnlineSource = GetFlag(parsed, "online") || GetFlag(parsed, "online-source") || GetFlag(parsed, "remote-source");
+            string csvPath = string.Empty;
 
-            if (!File.Exists(csvPath))
+            if (!useOnlineSource)
             {
-                Console.Error.WriteLine($"ERROR: CSV file not found: {csvPath}");
-                Environment.ExitCode = 1;
-                return true;
+                if (!parsed.TryGetValue("csv", out var csvArg) || string.IsNullOrWhiteSpace(csvArg))
+                {
+                    Console.Error.WriteLine("ERROR: --csv <path> is required when running in silent mode.");
+                    PrintUsage();
+                    Environment.ExitCode = 1;
+                    return true;
+                }
+
+                csvPath = csvArg!;
+                if (!File.Exists(csvPath))
+                {
+                    Console.Error.WriteLine($"ERROR: CSV file not found: {csvPath}");
+                    Environment.ExitCode = 1;
+                    return true;
+                }
+            }
+            else if (parsed.TryGetValue("csv", out var optionalCsv) && !string.IsNullOrWhiteSpace(optionalCsv))
+            {
+                if (File.Exists(optionalCsv))
+                {
+                    csvPath = optionalCsv!;
+                }
             }
 
             if (!parsed.TryGetValue("start", out var startText) || !TryParseDate(startText, out var start))
@@ -94,7 +108,9 @@ namespace BirthdayExtractor
 
             var outputDir = parsed.TryGetValue("out", out var outDir) && !string.IsNullOrWhiteSpace(outDir)
                 ? outDir!
-                : (Path.GetDirectoryName(Path.GetFullPath(csvPath)) ?? Environment.CurrentDirectory);
+                : (!useOnlineSource && !string.IsNullOrWhiteSpace(csvPath)
+                    ? Path.GetDirectoryName(Path.GetFullPath(csvPath)) ?? Environment.CurrentDirectory
+                    : Environment.CurrentDirectory);
 
             AppConfig config;
             try
@@ -105,6 +121,40 @@ namespace BirthdayExtractor
             {
                 config = new AppConfig();
                 LogRouter.LogException(ex, "Failed to load configuration");
+            }
+
+            string? remoteEndpoint = null;
+            string? remoteCookie = null;
+            if (useOnlineSource)
+            {
+                if (parsed.TryGetValue("remote-endpoint", out var remoteArg) && !string.IsNullOrWhiteSpace(remoteArg))
+                {
+                    remoteEndpoint = remoteArg;
+                }
+                else
+                {
+                    remoteEndpoint = config.CustomerApiEndpoint;
+                }
+
+                if (parsed.TryGetValue("remote-cookie", out var cookieArg) && !string.IsNullOrWhiteSpace(cookieArg))
+                {
+                    remoteCookie = cookieArg;
+                }
+                else if (parsed.TryGetValue("remote-token", out var tokenArg) && !string.IsNullOrWhiteSpace(tokenArg))
+                {
+                    remoteCookie = tokenArg;
+                }
+                else
+                {
+                    remoteCookie = config.CustomerApiCookieToken;
+                }
+
+                if (string.IsNullOrWhiteSpace(remoteEndpoint) || string.IsNullOrWhiteSpace(remoteCookie))
+                {
+                    Console.Error.WriteLine("ERROR: --online requires remote endpoint and authentication token. Provide --remote-endpoint and --remote-cookie or configure them in the app.");
+                    Environment.ExitCode = 1;
+                    return true;
+                }
             }
 
             var writeCsv = GetFlag(parsed, "csv-out", config.DefaultWriteCsv) && !GetFlag(parsed, "no-csv-out");
@@ -150,7 +200,10 @@ namespace BirthdayExtractor
 
                 var result = processor.Process(new ProcOptions
                 {
-                    CsvPath = csvPath,
+                    DataSource = useOnlineSource ? DataSourceType.Online : DataSourceType.Csv,
+                    CsvPath = useOnlineSource ? string.Empty : csvPath,
+                    RemoteEndpoint = useOnlineSource ? remoteEndpoint : null,
+                    RemoteCookieToken = useOnlineSource ? remoteCookie : null,
                     Start = start,
                     End = end,
                     OutDir = outputDir,
@@ -213,7 +266,14 @@ namespace BirthdayExtractor
                     }
                 }
 
-                TryLogHistory(config, csvPath, start, end, result);
+                TryLogHistory(
+                    config,
+                    useOnlineSource ? null : csvPath,
+                    start,
+                    end,
+                    result,
+                    useOnlineSource ? DataSourceType.Online : DataSourceType.Csv,
+                    useOnlineSource ? remoteEndpoint : null);
                 Environment.ExitCode = exitCode;
             }
             catch (Exception ex)
@@ -316,12 +376,35 @@ namespace BirthdayExtractor
                 out value);
         }
 
-        private static void TryLogHistory(AppConfig cfg, string csvPath, DateTime start, DateTime end, ProcResult result)
+        private static void TryLogHistory(
+            AppConfig cfg,
+            string? csvPath,
+            DateTime start,
+            DateTime end,
+            ProcResult result,
+            DataSourceType dataSource,
+            string? remoteEndpoint)
         {
             try
             {
-                var csvName = Path.GetFileName(csvPath);
-                var sha = ConfigStore.ComputeSha256(csvPath);
+                string? csvName;
+                string? sha = null;
+
+                if (dataSource == DataSourceType.Online)
+                {
+                    csvName = !string.IsNullOrWhiteSpace(remoteEndpoint)
+                        ? $"Online: {remoteEndpoint}"
+                        : "Online Source";
+                }
+                else
+                {
+                    csvName = string.IsNullOrWhiteSpace(csvPath) ? null : Path.GetFileName(csvPath);
+                    if (!string.IsNullOrWhiteSpace(csvPath) && File.Exists(csvPath))
+                    {
+                        sha = ConfigStore.ComputeSha256(csvPath);
+                    }
+                }
+
                 cfg.History.Add(new ProcessedWindow
                 {
                     Start = start,
@@ -343,9 +426,13 @@ namespace BirthdayExtractor
         private static void PrintUsage()
         {
             Console.WriteLine("Birthday Extractor silent mode");
-            Console.WriteLine("Usage: BirthdayExtractor.exe --silent --csv <path> --start <yyyy-MM-dd> --end <yyyy-MM-dd> [options]");
+            Console.WriteLine("Usage: BirthdayExtractor.exe --silent (--csv <path> | --online) --start <yyyy-MM-dd> --end <yyyy-MM-dd> [options]");
             Console.WriteLine();
             Console.WriteLine("Options:");
+            Console.WriteLine("  --online                Pull customer data from the configured online source");
+            Console.WriteLine("  --remote-endpoint <url> Override the online source endpoint");
+            Console.WriteLine("  --remote-cookie <value> Override the online source cookie token");
+            Console.WriteLine("  --remote-token <value>  Alias for --remote-cookie");
             Console.WriteLine("  --out <dir>             Output directory (defaults to CSV folder)");
             Console.WriteLine("  --csv-out               Force CSV export (overrides config)");
             Console.WriteLine("  --no-csv-out            Disable CSV export");
