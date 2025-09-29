@@ -1,17 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+
+    <Version>0.6</Version>
+    <Authors>Diego Santiso</Authors>
+    <ApplicationIcon>birthdaycake.ico</ApplicationIcon>
+
     <OutputType>WinExe</OutputType>
+    <PublishRelease>true</PublishRelease>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU</Platforms>
+    
 
     <!-- Optional single-file publish -->
     <PublishSingleFile>true</PublishSingleFile>
     <!-- <PublishTrimmed>true</PublishTrimmed>  ## Cant trim if using windows forms-->
     <!-- <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError> ## Cant trim if using windows forms-->
-    <SelfContained>true</SelfContained>
+    <PublishSelfContained >true</PublishSelfContained >
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <InvariantGlobalization>true</InvariantGlobalization>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>

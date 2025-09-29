@@ -47,12 +47,14 @@ namespace BirthdayExtractor
             {
                 _cfg = ConfigStore.LoadOrCreate() ?? new AppConfig();
             }
-            catch
+            catch (Exception ex)
             {
                 _cfg = new AppConfig();
+                LogRouter.LogException(ex, "Failed to load configuration");
             }
             // sanity defaults if someone hand-edited config
             if (_cfg.DefaultWindowDays <= 0) _cfg.DefaultWindowDays = 7;
+            LogRouter.SetVerboseLoggingEnabled(_cfg.VerboseLoggingEnabled);
             // 2) Form shell: establish window chrome before wiring controls
             Text = $"Birthday Extractor v{AppVersion.Display}";
             Width = 820; Height = 600;
@@ -61,6 +63,7 @@ namespace BirthdayExtractor
             // 3) Build UI
             InitializeMenu();
             InitializeContentPanel();
+            LogRouter.RegisterUiLogger(Log);
 
             // 4) Defaults pulled from config to pre-populate the form
             dtStart.Value = DateTime.Today.AddDays(_cfg.DefaultStartOffsetDays);
@@ -152,8 +155,19 @@ namespace BirthdayExtractor
                 dtEnd.Value   = dtStart.Value.AddDays(_cfg.DefaultWindowDays - 1);
                 chkCsv.Checked  = _cfg.DefaultWriteCsv;
                 chkXlsx.Checked = _cfg.DefaultWriteXlsx;
+                LogRouter.SetVerboseLoggingEnabled(_cfg.VerboseLoggingEnabled);
                 Log("Settings saved.");
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                LogRouter.UnregisterUiLogger(Log);
+            }
+
+            base.Dispose(disposing);
         }
 
         private async Task CheckForUpdatesAsync()
@@ -228,7 +242,7 @@ namespace BirthdayExtractor
             }
             catch (Exception ex)
             {
-                Log("Update check failed: " + ex.Message);
+                LogRouter.LogException(ex, "Update check failed");
             }
         }
         /// <summary>
@@ -448,9 +462,6 @@ namespace BirthdayExtractor
                     Log = Log,
                     Cancellation = _cts.Token
                 }), _cts.Token);
-                Log($"Done. Kept {result.KeptCount} rows.");
-                if (result.CsvPath is not null) Log($"CSV : {result.CsvPath}");
-                if (result.XlsxPath is not null) Log($"XLSX: {result.XlsxPath}");
                 _lastResult = result;
                 if (result.Leads.Count > 0)
                 {
@@ -475,18 +486,19 @@ namespace BirthdayExtractor
                 }
                 catch (Exception hex)
                 {
-                    Log("WARN: Failed to log processed window: " + hex.Message);
+                    LogRouter.LogException(hex, "WARN: Failed to log processed window");
                 }
                 // ---------------------------
                 SetProgress(100);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException oce)
             {
                 Log("Cancelled by user.");
+                LogRouter.LogException(oce);
             }
             catch (Exception ex)
             {
-                Log("ERROR: " + ex.Message);
+                LogRouter.LogException(ex, "ERROR");
             }
             finally
             {
@@ -539,13 +551,14 @@ namespace BirthdayExtractor
                     Log,
                     _cts.Token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException oce)
             {
                 Log("Upload cancelled by user.");
+                LogRouter.LogException(oce, "Upload cancelled");
             }
             catch (Exception ex)
             {
-                Log("ERROR during upload: " + ex.Message);
+                LogRouter.LogException(ex, "ERROR during upload");
             }
             finally
             {
