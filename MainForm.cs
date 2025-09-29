@@ -160,7 +160,7 @@ namespace BirthdayExtractor
                 Left = 20,
                 Top = Offset(242),
                 Width = 760,
-                Height = 300,
+                Height = 260,
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 ReadOnly = true,
