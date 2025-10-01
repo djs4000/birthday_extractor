@@ -29,4 +29,8 @@
     <PackageReference Include="ClosedXML" Version="0.104.0" />
     <PackageReference Include="libphonenumber-csharp" Version="8.13.41" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="birthdaycake.ico" />
+  </ItemGroup>
 </Project>
