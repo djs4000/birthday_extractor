@@ -210,7 +210,7 @@ namespace BirthdayExtractor
                 ["doctype"] = "Lead",
                 ["naming_series"] = "CRM-LEAD-.YYYY.-",
                 ["source"] = "Outbound", 
-                ["status"] = "Initial Contact", 
+                ["status"] = "Outbound", 
                 ["first_name"] = parentFirst,
                 ["last_name"] = parentLast,
                 ["mobile_no"] = phone,
