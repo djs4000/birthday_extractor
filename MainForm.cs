@@ -413,23 +413,26 @@ namespace BirthdayExtractor
                         {
                             "@echo off",
                             "setlocal",
-                            $"set \"TARGET_DIR={EscapeForBatch(appDir)}\"",
+                            $"set \"TARGET_EXE={EscapeForBatch(exePath)}\"",
                             ":wait",
-                            "rmdir /s /q \"%TARGET_DIR%\" > nul 2>&1",
-                            "if exist \"%TARGET_DIR%\" (",
+                            "if not exist \"%TARGET_EXE%\" goto done",
+                            "del /f /q \"%TARGET_EXE%\" > nul 2>&1",
+                            "if exist \"%TARGET_EXE%\" (",
                             "    timeout /t 1 /nobreak > nul",
                             "    goto wait",
                             ")",
+                            ":done",
                             "del \"%~f0\"",
                             "exit /b 0"
                         };
 
                         File.WriteAllLines(scriptPath, script);
 
-                        Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" \"{scriptPath}\"")
+                        Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" /b \"{scriptPath}\"")
                         {
                             CreateNoWindow = true,
-                            UseShellExecute = false
+                            UseShellExecute = false,
+                            WindowStyle = ProcessWindowStyle.Hidden
                         });
                     }
                 }
