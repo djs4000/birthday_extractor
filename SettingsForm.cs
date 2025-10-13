@@ -73,6 +73,7 @@ namespace BirthdayExtractor
             Controls.Add(new Label { Left = 20, Top = y, Width = 220, Text = "Updates:" });
             chkUpdateChecks = new CheckBox
             {
+                Enabled = false,
                 Left = 260,
                 Top = y,
                 Width = 240,
