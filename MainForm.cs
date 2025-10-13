@@ -187,10 +187,10 @@ namespace BirthdayExtractor
         }
 
         /// <inheritdoc />
-        protected override async void OnShown(EventArgs e)
+        protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            await CheckForUpdatesAsync();
+            _ = CheckForUpdatesAsync();
         }
         /// <summary>
         /// Opens the secondary settings dialog and reapplies any updated defaults.
