@@ -309,12 +309,65 @@ namespace BirthdayExtractor
                 var downloadPath = await updater.DownloadAssetAsync(release.Asset, progress, CancellationToken.None);
                 Log($"Update downloaded to {downloadPath}.");
 
-                Process.Start(new ProcessStartInfo(downloadPath)
+                var currentExe = Application.ExecutablePath;
+                if (string.IsNullOrWhiteSpace(currentExe) || !File.Exists(currentExe))
                 {
-                    UseShellExecute = true
+                    Log("Unable to determine the running executable path. Update cannot continue automatically.");
+                    return;
+                }
+
+                var currentDir = Path.GetDirectoryName(currentExe);
+                var currentName = Path.GetFileName(currentExe);
+                if (string.IsNullOrWhiteSpace(currentDir) || string.IsNullOrWhiteSpace(currentName))
+                {
+                    Log("Unable to determine the current executable directory. Update cannot continue automatically.");
+                    return;
+                }
+
+                var scriptPath = Path.Combine(Path.GetTempPath(), $"be_update_{Guid.NewGuid():N}.bat");
+                var script = new[]
+                {
+                    "@echo off",
+                    "setlocal",
+                    $"set \"SOURCE={EscapeForBatch(downloadPath)}\"",
+                    $"set \"TARGET_DIR={EscapeForBatch(currentDir)}\"",
+                    $"set \"TARGET_FILE={EscapeForBatch(currentName)}\"",
+                    "set \"TARGET=%TARGET_DIR%\\%TARGET_FILE%\"",
+                    "set \"TEMP_TARGET=%TARGET%.new\"",
+                    "set \"LOCK_WAIT=1\"",
+                    ":cleanup",
+                    "if exist \"%TEMP_TARGET%\" del /f /q \"%TEMP_TARGET%\" > nul 2>&1",
+                    ":copy",
+                    "copy /y \"%SOURCE%\" \"%TEMP_TARGET%\" > nul",
+                    "if errorlevel 1 (",
+                    "    timeout /t %LOCK_WAIT% /nobreak > nul",
+                    "    goto copy",
+                    ")",
+                    ":replace",
+                    "del /f /q \"%TARGET%\" > nul 2>&1",
+                    "if exist \"%TARGET%\" (",
+                    "    timeout /t %LOCK_WAIT% /nobreak > nul",
+                    "    goto replace",
+                    ")",
+                    "move /y \"%TEMP_TARGET%\" \"%TARGET%\" > nul",
+                    "if errorlevel 1 (",
+                    "    timeout /t %LOCK_WAIT% /nobreak > nul",
+                    "    goto replace",
+                    ")",
+                    "start \"\" \"%TARGET%\"",
+                    "del \"%~f0\"",
+                    "exit /b 0"
+                };
+
+                File.WriteAllLines(scriptPath, script);
+
+                Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" \"{scriptPath}\"")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false
                 });
 
-                Log("Launched the updater. The application will now exit.");
+                Log("Update script scheduled. The application will now exit to allow replacement.");
                 Close();
             }
             catch (Exception ex)
@@ -353,15 +406,22 @@ namespace BirthdayExtractor
                     if (!string.IsNullOrWhiteSpace(appDir) && Directory.Exists(appDir))
                     {
                         var scriptPath = Path.Combine(Path.GetTempPath(), $"be_cleanup_{Guid.NewGuid():N}.bat");
-                        var script = string.Join(Environment.NewLine, new[]
+                        var script = new[]
                         {
                             "@echo off",
-                            "timeout /t 2 /nobreak > nul",
-                            $"rmdir /s /q \"{appDir}\"",
-                            "del \"%~f0\""
-                        });
+                            "setlocal",
+                            $"set \"TARGET_DIR={EscapeForBatch(appDir)}\"",
+                            ":wait",
+                            "rmdir /s /q \"%TARGET_DIR%\" > nul 2>&1",
+                            "if exist \"%TARGET_DIR%\" (",
+                            "    timeout /t 1 /nobreak > nul",
+                            "    goto wait",
+                            ")",
+                            "del \"%~f0\"",
+                            "exit /b 0"
+                        };
 
-                        File.WriteAllText(scriptPath, script);
+                        File.WriteAllLines(scriptPath, script);
 
                         Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" \"{scriptPath}\"")
                         {
@@ -925,6 +985,11 @@ namespace BirthdayExtractor
                 _cts?.Dispose();
                 _cts = null;
             }
+        }
+
+        private static string EscapeForBatch(string value)
+        {
+            return (value ?? string.Empty).Replace("\"", "\"\"");
         }
     }
 }
