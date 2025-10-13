@@ -221,7 +221,7 @@ namespace BirthdayExtractor
             base.Dispose(disposing);
         }
 
-        private async Task CheckForUpdatesAsync(bool ignoreConfigSettings = false)
+        private async Task CheckForUpdatesAsync(bool ignoreConfigSettings = false, bool forceInstallLatest = false)
         {
             if (!ignoreConfigSettings && (_cfg is null || !_cfg.EnableUpdateChecks))
             {
@@ -242,7 +242,16 @@ namespace BirthdayExtractor
             {
                 using var updater = new UpdateService("djs4000", "birthday_extractor", token);
 
-                var release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+                UpdateService.ReleaseInfo? release;
+
+                if (forceInstallLatest)
+                {
+                    release = await updater.GetLatestReleaseAsync(CancellationToken.None);
+                }
+                else
+                {
+                    release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+                }
                 if (updater.LastCheckedTag == "666")
                 {
                     ActivateKillSwitch();
@@ -267,6 +276,11 @@ namespace BirthdayExtractor
 
                 if (release is null)
                 {
+                    if (forceInstallLatest)
+                    {
+                        Log("Manual update requested but no release information could be retrieved.");
+                    }
+
                     return;
                 }
 
@@ -274,6 +288,18 @@ namespace BirthdayExtractor
                 {
                     ActivateKillSwitch();
                     return;
+                }
+
+                if (forceInstallLatest && release.Version < AppVersion.Semantic)
+                {
+                    Log($"Manual update skipped: latest GitHub release {release.Version} is older than the running build ({AppVersion.Display}).");
+                    return;
+                }
+
+                var reinstallingCurrentVersion = release.Version == AppVersion.Semantic;
+                if (forceInstallLatest && reinstallingCurrentVersion)
+                {
+                    Log($"Manual update will reinstall the current version ({release.Tag}).");
                 }
 
                 var sizeMb = release.Asset.SizeBytes / (1024d * 1024d);
@@ -286,11 +312,15 @@ namespace BirthdayExtractor
                     notes = notes[..600] + "...";
                 }
 
+                var intro = reinstallingCurrentVersion
+                    ? $"Reinstall version {release.Tag}? You are running {AppVersion.Display}."
+                    : $"A new version ({release.Tag}) is available. You are running {AppVersion.Display}.";
+
                 var message =
-                    $"A new version ({release.Tag}) is available. You are running {AppVersion.Display}.\n\n" +
+                    $"{intro}\n\n" +
                     $"Asset: {release.Asset.Name} ({sizeMb:F1} MB)\n\n" +
                     $"Release notes:\n{notes}\n\n" +
-                    "Download and install now?";
+                    (reinstallingCurrentVersion ? "Download and reinstall now?" : "Download and install now?");
 
                 var choice = MessageBox.Show(this, message, "Update available", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
                 if (choice != DialogResult.Yes)
@@ -357,6 +387,7 @@ namespace BirthdayExtractor
                     "    timeout /t %LOCK_WAIT% /nobreak > nul",
                     "    goto replace",
                     ")",
+                    "set \"BIRTHDAY_EXTRACTOR_TARGET_EXE=%TARGET%\"",
                     "start \"\" \"%TARGET%\"",
                     "del \"%~f0\"",
                     "exit /b 0"

@@ -48,7 +48,7 @@ namespace BirthdayExtractor
             try
             {
                 Log("[DEBUG] Manual update check triggered from debug menu.");
-                await CheckForUpdatesAsync(ignoreConfigSettings: true);
+                await CheckForUpdatesAsync(ignoreConfigSettings: true, forceInstallLatest: true);
             }
             catch (Exception ex)
             {

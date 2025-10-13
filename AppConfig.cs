@@ -61,6 +61,12 @@ namespace BirthdayExtractor
         public bool EnableUpdateChecks { get; set; } = true;
 
         /// <summary>
+        /// Stores the last known installation path of the executable so self-updates launched
+        /// from a temporary folder know where to copy themselves.
+        /// </summary>
+        public string? LastInstalledExecutable { get; set; }
+
+        /// <summary>
         /// An optional GitHub Personal Access Token (PAT) for checking updates from private repositories.
         /// TODO: Encrypt this value before saving to disk to enhance security.
         /// </summary>
