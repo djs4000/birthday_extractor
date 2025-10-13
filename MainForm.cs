@@ -172,7 +172,7 @@ namespace BirthdayExtractor
                 DetectUrls = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
-            txtLog.LinkClicked += (s, e) => OpenLogLink(e.LinkText);
+            txtLog.LinkClicked += (s, e) => OpenLogLink(e.LinkText); //todo: fix warning
             // 6) Add to content panel (not the form)
             content.Controls.AddRange(new Control[] {
                 lblSource, rbSourceCsv, rbSourceOnline,
@@ -187,10 +187,10 @@ namespace BirthdayExtractor
         }
 
         /// <inheritdoc />
-        protected override void OnShown(EventArgs e)
+        protected override async void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            _ = CheckForUpdatesAsync();
+            await CheckForUpdatesAsync();
         }
         /// <summary>
         /// Opens the secondary settings dialog and reapplies any updated defaults.
@@ -794,7 +794,7 @@ namespace BirthdayExtractor
             }
         }
 
-        private static void OpenLogLink(string linkText)
+        private static void OpenLogLink(string? linkText)
         {
             if (string.IsNullOrWhiteSpace(linkText))
             {
