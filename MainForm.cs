@@ -96,10 +96,13 @@ namespace BirthdayExtractor
             miHistory.Click  += (s, e) => ShowHistory();
             menu.Items.Add(miSettings);
             menu.Items.Add(miHistory);
+            InitializeDebugMenuItems(menu);
             menu.Dock = DockStyle.Top;
             MainMenuStrip = menu;
             Controls.Add(menu);
         }
+
+        partial void InitializeDebugMenuItems(MenuStrip menu);
 
         /// <summary>
         /// Sets up the main content panel and all its child controls.
@@ -218,9 +221,9 @@ namespace BirthdayExtractor
             base.Dispose(disposing);
         }
 
-        private async Task CheckForUpdatesAsync()
+        private async Task CheckForUpdatesAsync(bool ignoreConfigSettings = false)
         {
-            if (_cfg is null || !_cfg.EnableUpdateChecks)
+            if (!ignoreConfigSettings && (_cfg is null || !_cfg.EnableUpdateChecks))
             {
                 return;
             }
