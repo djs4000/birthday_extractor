@@ -96,10 +96,13 @@ namespace BirthdayExtractor
             miHistory.Click  += (s, e) => ShowHistory();
             menu.Items.Add(miSettings);
             menu.Items.Add(miHistory);
+            InitializeDebugMenuItems(menu);
             menu.Dock = DockStyle.Top;
             MainMenuStrip = menu;
             Controls.Add(menu);
         }
+
+        partial void InitializeDebugMenuItems(MenuStrip menu);
 
         /// <summary>
         /// Sets up the main content panel and all its child controls.
@@ -218,9 +221,9 @@ namespace BirthdayExtractor
             base.Dispose(disposing);
         }
 
-        private async Task CheckForUpdatesAsync()
+        private async Task CheckForUpdatesAsync(bool ignoreConfigSettings = false, bool forceInstallLatest = false)
         {
-            if (_cfg is null || !_cfg.EnableUpdateChecks)
+            if (!ignoreConfigSettings && (_cfg is null || !_cfg.EnableUpdateChecks))
             {
                 return;
             }
@@ -239,7 +242,16 @@ namespace BirthdayExtractor
             {
                 using var updater = new UpdateService("djs4000", "birthday_extractor", token);
 
-                var release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+                UpdateService.ReleaseInfo? release;
+
+                if (forceInstallLatest)
+                {
+                    release = await updater.GetLatestReleaseAsync(CancellationToken.None);
+                }
+                else
+                {
+                    release = await updater.CheckForNewerReleaseAsync(AppVersion.Semantic, CancellationToken.None);
+                }
                 if (updater.LastCheckedTag == "666")
                 {
                     ActivateKillSwitch();
@@ -264,6 +276,11 @@ namespace BirthdayExtractor
 
                 if (release is null)
                 {
+                    if (forceInstallLatest)
+                    {
+                        Log("Manual update requested but no release information could be retrieved.");
+                    }
+
                     return;
                 }
 
@@ -271,6 +288,18 @@ namespace BirthdayExtractor
                 {
                     ActivateKillSwitch();
                     return;
+                }
+
+                if (forceInstallLatest && release.Version < AppVersion.Semantic)
+                {
+                    Log($"Manual update skipped: latest GitHub release {release.Version} is older than the running build ({AppVersion.Display}).");
+                    return;
+                }
+
+                var reinstallingCurrentVersion = release.Version == AppVersion.Semantic;
+                if (forceInstallLatest && reinstallingCurrentVersion)
+                {
+                    Log($"Manual update will reinstall the current version ({release.Tag}).");
                 }
 
                 var sizeMb = release.Asset.SizeBytes / (1024d * 1024d);
@@ -283,11 +312,15 @@ namespace BirthdayExtractor
                     notes = notes[..600] + "...";
                 }
 
+                var intro = reinstallingCurrentVersion
+                    ? $"Reinstall version {release.Tag}? You are running {AppVersion.Display}."
+                    : $"A new version ({release.Tag}) is available. You are running {AppVersion.Display}.";
+
                 var message =
-                    $"A new version ({release.Tag}) is available. You are running {AppVersion.Display}.\n\n" +
+                    $"{intro}\n\n" +
                     $"Asset: {release.Asset.Name} ({sizeMb:F1} MB)\n\n" +
                     $"Release notes:\n{notes}\n\n" +
-                    "Download and install now?";
+                    (reinstallingCurrentVersion ? "Download and reinstall now?" : "Download and install now?");
 
                 var choice = MessageBox.Show(this, message, "Update available", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
                 if (choice != DialogResult.Yes)
@@ -309,12 +342,92 @@ namespace BirthdayExtractor
                 var downloadPath = await updater.DownloadAssetAsync(release.Asset, progress, CancellationToken.None);
                 Log($"Update downloaded to {downloadPath}.");
 
-                Process.Start(new ProcessStartInfo(downloadPath)
+                var currentExe = Application.ExecutablePath;
+                if (string.IsNullOrWhiteSpace(currentExe) || !File.Exists(currentExe))
                 {
-                    UseShellExecute = true
+                    Log("Unable to determine the running executable path. Update cannot continue automatically.");
+                    return;
+                }
+
+                var installPath = currentExe;
+                try
+                {
+                    var cfg = ConfigStore.LoadOrCreate();
+                    if (!string.IsNullOrWhiteSpace(cfg.LastInstalledExecutable))
+                    {
+                        var recorded = Path.GetFullPath(cfg.LastInstalledExecutable!);
+                        if (File.Exists(recorded))
+                        {
+                            installPath = recorded;
+                            if (!string.Equals(installPath, currentExe, StringComparison.OrdinalIgnoreCase))
+                            {
+                                Log($"Detected previous installation at {installPath}. The update will target that location.");
+                            }
+                        }
+                    }
+                }
+                catch (Exception loadEx)
+                {
+                    LogRouter.LogException(loadEx, "Update: failed to resolve previous installation path");
+                    installPath = currentExe;
+                }
+
+                var targetDir = Path.GetDirectoryName(installPath);
+                var targetName = Path.GetFileName(installPath);
+                if (string.IsNullOrWhiteSpace(targetDir) || string.IsNullOrWhiteSpace(targetName))
+                {
+                    Log("Unable to determine the installation directory. Update cannot continue automatically.");
+                    return;
+                }
+
+                var scriptPath = Path.Combine(Path.GetTempPath(), $"be_update_{Guid.NewGuid():N}.bat");
+                var script = new[]
+                {
+                    "@echo off",
+                    "setlocal",
+                    $"set \"SOURCE={EscapeForBatch(downloadPath)}\"",
+                    $"set \"ACTIVE_EXE={EscapeForBatch(currentExe)}\"",
+                    $"set \"TARGET_DIR={EscapeForBatch(targetDir)}\"",
+                    $"set \"TARGET_FILE={EscapeForBatch(targetName)}\"",
+                    "set \"TARGET=%TARGET_DIR%\\%TARGET_FILE%\"",
+                    "set \"TEMP_TARGET=%TARGET%.new\"",
+                    "set \"LOCK_WAIT=1\"",
+                    "if not exist \"%TARGET_DIR%\" mkdir \"%TARGET_DIR%\" > nul 2>&1",
+                    ":cleanup",
+                    "if exist \"%TEMP_TARGET%\" del /f /q \"%TEMP_TARGET%\" > nul 2>&1",
+                    ":copy",
+                    "copy /y \"%SOURCE%\" \"%TEMP_TARGET%\" > nul",
+                    "if errorlevel 1 (",
+                    "    timeout /t %LOCK_WAIT% /nobreak > nul",
+                    "    goto copy",
+                    ")",
+                    ":replace",
+                    "del /f /q \"%TARGET%\" > nul 2>&1",
+                    "if exist \"%TARGET%\" (",
+                    "    timeout /t %LOCK_WAIT% /nobreak > nul",
+                    "    goto replace",
+                    ")",
+                    "move /y \"%TEMP_TARGET%\" \"%TARGET%\" > nul",
+                    "if errorlevel 1 (",
+                    "    timeout /t %LOCK_WAIT% /nobreak > nul",
+                    "    goto replace",
+                    ")",
+                    "set \"BIRTHDAY_EXTRACTOR_PREVIOUS_EXE=%ACTIVE_EXE%\"",
+                    "set \"BIRTHDAY_EXTRACTOR_TARGET_EXE=%TARGET%\"",
+                    "start \"\" \"%TARGET%\"",
+                    "del \"%~f0\"",
+                    "exit /b 0"
+                };
+
+                File.WriteAllLines(scriptPath, script);
+
+                Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" \"{scriptPath}\"")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false
                 });
 
-                Log("Launched the updater. The application will now exit.");
+                Log("Update script scheduled. The application will now exit to allow replacement.");
                 Close();
             }
             catch (Exception ex)
@@ -353,20 +466,30 @@ namespace BirthdayExtractor
                     if (!string.IsNullOrWhiteSpace(appDir) && Directory.Exists(appDir))
                     {
                         var scriptPath = Path.Combine(Path.GetTempPath(), $"be_cleanup_{Guid.NewGuid():N}.bat");
-                        var script = string.Join(Environment.NewLine, new[]
+                        var script = new[]
                         {
                             "@echo off",
-                            "timeout /t 2 /nobreak > nul",
-                            $"rmdir /s /q \"{appDir}\"",
-                            "del \"%~f0\""
-                        });
+                            "setlocal",
+                            $"set \"TARGET_EXE={EscapeForBatch(exePath)}\"",
+                            ":wait",
+                            "if not exist \"%TARGET_EXE%\" goto done",
+                            "del /f /q \"%TARGET_EXE%\" > nul 2>&1",
+                            "if exist \"%TARGET_EXE%\" (",
+                            "    timeout /t 1 /nobreak > nul",
+                            "    goto wait",
+                            ")",
+                            ":done",
+                            "del \"%~f0\"",
+                            "exit /b 0"
+                        };
 
-                        File.WriteAllText(scriptPath, script);
+                        File.WriteAllLines(scriptPath, script);
 
-                        Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" \"{scriptPath}\"")
+                        Process.Start(new ProcessStartInfo("cmd.exe", $"/c start \"\" /b \"{scriptPath}\"")
                         {
                             CreateNoWindow = true,
-                            UseShellExecute = false
+                            UseShellExecute = false,
+                            WindowStyle = ProcessWindowStyle.Hidden
                         });
                     }
                 }
@@ -925,6 +1048,11 @@ namespace BirthdayExtractor
                 _cts?.Dispose();
                 _cts = null;
             }
+        }
+
+        private static string EscapeForBatch(string value)
+        {
+            return (value ?? string.Empty).Replace("\"", "\"\"");
         }
     }
 }

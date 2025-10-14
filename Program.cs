@@ -19,6 +19,11 @@ namespace BirthdayExtractor
         [STAThread]
         static void Main(string[] args)
         {
+            if (SelfUpdateCoordinator.TryHandleSelfReplacement())
+            {
+                return;
+            }
+
             if (TryRunSilent(args))
             {
                 return;
