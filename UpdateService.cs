@@ -48,6 +48,25 @@ namespace BirthdayExtractor
         /// </summary>
         public async Task<ReleaseInfo?> CheckForNewerReleaseAsync(Version currentVersion, CancellationToken cancellationToken)
         {
+            if (currentVersion is null)
+            {
+                throw new ArgumentNullException(nameof(currentVersion));
+            }
+
+            var release = await FetchLatestReleaseAsync(cancellationToken);
+            if (release is null)
+            {
+                return null;
+            }
+
+            return release.Version > currentVersion ? release : null;
+        }
+
+        public Task<ReleaseInfo?> GetLatestReleaseAsync(CancellationToken cancellationToken)
+            => FetchLatestReleaseAsync(cancellationToken);
+
+        private async Task<ReleaseInfo?> FetchLatestReleaseAsync(CancellationToken cancellationToken)
+        {
             LastCheckedVersion = null;
             LastCheckedTag = null;
 
@@ -86,11 +105,6 @@ namespace BirthdayExtractor
             }
 
             LastCheckedVersion = latestVersion;
-
-            if (latestVersion <= currentVersion)
-            {
-                return null;
-            }
 
             if (!root.TryGetProperty("assets", out var assetsElement))
             {
