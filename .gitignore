@@ -3,6 +3,8 @@
 # Ignore a specific directory
 /bin/
 /obj/
+/properties/
+/.vscode/
 
 # Ignore a specific file
 Birthday_Extractor.code-workspace

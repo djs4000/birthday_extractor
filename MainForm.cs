@@ -14,7 +14,7 @@ namespace BirthdayExtractor
     /// Primary UI surface for configuring and running birthday extraction jobs.
     /// Hosts file selectors, date pickers, progress feedback, and history entry points.
     /// </summary>
-    public class MainForm : Form
+    public partial class MainForm : Form
     {
         // --- UI controls ---
         private Panel content = null!;
@@ -820,7 +820,7 @@ namespace BirthdayExtractor
             }
         }
 
-        private static void OpenLogLink(string linkText)
+        private static void OpenLogLink(string? linkText)
         {
             if (string.IsNullOrWhiteSpace(linkText))
             {

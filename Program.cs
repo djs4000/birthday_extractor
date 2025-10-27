@@ -17,13 +17,16 @@ namespace BirthdayExtractor
         /// Boots the UI thread, applies visual/high DPI settings, and opens <see cref="MainForm"/>.
         /// </summary>
         [STAThread]
-        static void Main(string[] args)
+        static void  Main(string[] args)
         {
+            System.Diagnostics.Debug.WriteLine("hello? im in Main");
+            Console.WriteLine("stuff");
+            Console.WriteLine(args.Length);
             if (SelfUpdateCoordinator.TryHandleSelfReplacement())
             {
                 return;
             }
-
+           
             if (TryRunSilent(args))
             {
                 return;
@@ -37,6 +40,7 @@ namespace BirthdayExtractor
 
         private static bool TryRunSilent(string[] args)
         {
+            System.Diagnostics.Debug.WriteLine("hello? Now im in try silent");
             if (args is null || args.Length == 0)
             {
                 return false;

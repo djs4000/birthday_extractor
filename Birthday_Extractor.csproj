@@ -5,7 +5,7 @@
     <Authors>Diego Santiso</Authors>
     <ApplicationIcon>birthdaycake.ico</ApplicationIcon>
 
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <PublishRelease>true</PublishRelease>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
