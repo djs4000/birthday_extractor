@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -94,18 +97,46 @@ namespace BirthdayExtractor
                 }
             }
 
-            if (!parsed.TryGetValue("start", out var startText) || !TryParseDate(startText, out var start))
+            AppConfig config;
+            try
             {
-                Console.Error.WriteLine("ERROR: --start <yyyy-MM-dd> is required when running in silent mode.");
-                Environment.ExitCode = 1;
-                return true;
+                config = ConfigStore.LoadOrCreate() ?? new AppConfig();
+            }
+            catch (Exception ex)
+            {
+                config = new AppConfig();
+                LogRouter.LogException(ex, "Failed to load configuration");
             }
 
-            if (!parsed.TryGetValue("end", out var endText) || !TryParseDate(endText, out var end))
+            DateTime start;
+            if (parsed.TryGetValue("start", out var startText) && !string.IsNullOrWhiteSpace(startText))
             {
-                Console.Error.WriteLine("ERROR: --end <yyyy-MM-dd> is required when running in silent mode.");
-                Environment.ExitCode = 1;
-                return true;
+                if (!TryParseDate(startText, out start))
+                {
+                    Console.Error.WriteLine("ERROR: --start must be formatted as yyyy-MM-dd.");
+                    Environment.ExitCode = 1;
+                    return true;
+                }
+            }
+            else
+            {
+                start = DateTime.Today.AddDays(config.DefaultStartOffsetDays);
+            }
+
+            DateTime end;
+            if (parsed.TryGetValue("end", out var endText) && !string.IsNullOrWhiteSpace(endText))
+            {
+                if (!TryParseDate(endText, out end))
+                {
+                    Console.Error.WriteLine("ERROR: --end must be formatted as yyyy-MM-dd.");
+                    Environment.ExitCode = 1;
+                    return true;
+                }
+            }
+            else
+            {
+                var windowDays = Math.Max(1, config.DefaultWindowDays);
+                end = start.AddDays(windowDays - 1);
             }
 
             if (end < start)
@@ -120,17 +151,6 @@ namespace BirthdayExtractor
                 : (!useOnlineSource && !string.IsNullOrWhiteSpace(csvPath)
                     ? Path.GetDirectoryName(Path.GetFullPath(csvPath)) ?? Environment.CurrentDirectory
                     : Environment.CurrentDirectory);
-
-            AppConfig config;
-            try
-            {
-                config = ConfigStore.LoadOrCreate() ?? new AppConfig();
-            }
-            catch (Exception ex)
-            {
-                config = new AppConfig();
-                LogRouter.LogException(ex, "Failed to load configuration");
-            }
 
             string? remoteEndpoint = null;
             string? remoteCookie = null;
@@ -169,9 +189,16 @@ namespace BirthdayExtractor
             var writeCsv = GetFlag(parsed, "csv-out", config.DefaultWriteCsv) && !GetFlag(parsed, "no-csv-out");
             var writeXlsx = GetFlag(parsed, "xlsx-out", config.DefaultWriteXlsx) && !GetFlag(parsed, "no-xlsx-out");
             var uploadErpNext = GetFlag(parsed, "erpnext") || GetFlag(parsed, "erp-upload");
+            var dryRun = GetFlag(parsed, "dryrun") || GetFlag(parsed, "dry-run");
             if (GetFlag(parsed, "no-erpnext"))
             {
                 uploadErpNext = false;
+            }
+            if (dryRun && !uploadErpNext)
+            {
+                Console.Error.WriteLine("ERROR: --dryrun requires --erpnext.");
+                Environment.ExitCode = 1;
+                return true;
             }
             var quiet = GetFlag(parsed, "quiet");
 
@@ -242,36 +269,70 @@ namespace BirthdayExtractor
                         return true;
                     }
 
-                    if (string.IsNullOrWhiteSpace(erpBaseUrl) || string.IsNullOrWhiteSpace(erpApiKey) || string.IsNullOrWhiteSpace(erpApiSecret))
+                    if (dryRun)
                     {
-                        Console.Error.WriteLine("ERROR: ERPNext credentials are required. Use --erp-base, --erp-key, and --erp-secret or configure them in the app.");
-                        Environment.ExitCode = 1;
-                        return true;
-                    }
-
-                    if (!quiet)
-                    {
-                        Console.WriteLine("Starting ERPNext upload...");
-                    }
-
-                    try
-                    {
-                        var summary = RunErpNextUpload(result.Leads, new ErpNextUploadOptions(erpBaseUrl!, erpApiKey!, erpApiSecret!)
+                        try
                         {
-                            UploadTimestamp = DateTime.Now
-                        }, quiet ? null : (Action<string>)(m => Console.WriteLine($"{DateTime.Now:HH:mm:ss}  {m}")));
-
-                        if (summary.Failed > 0)
+                            var timestamp = DateTime.Now;
+                            var dryRunPath = WriteErpNextDryRunFile(result.Leads, timestamp, out var written, out var missingKeys, out var missingRequired);
+                            if (quiet)
+                            {
+                                Console.WriteLine(dryRunPath);
+                            }
+                            else
+                            {
+                                Console.WriteLine($"ERPNext dry run wrote {written} lead payload(s) to {dryRunPath}.");
+                                if (missingKeys > 0)
+                                {
+                                    Console.WriteLine($"Skipped {missingKeys} lead(s) missing a business key.");
+                                }
+                                if (missingRequired > 0)
+                                {
+                                    Console.WriteLine($"Skipped {missingRequired} lead(s) missing required fields.");
+                                }
+                            }
+                        }
+                        catch (Exception dryRunEx)
                         {
-                            exitCode = Math.Max(exitCode, 2);
+                            Console.Error.WriteLine("ERROR writing ERPNext dry run file: " + dryRunEx.Message);
+                            LogRouter.LogException(dryRunEx, "ERROR writing ERPNext dry run file");
+                            Environment.ExitCode = 1;
+                            return true;
                         }
                     }
-                    catch (Exception uploadEx)
+                    else
                     {
-                        Console.Error.WriteLine("ERROR during ERPNext upload: " + uploadEx.Message);
-                        LogRouter.LogException(uploadEx, "ERROR during ERPNext upload");
-                        Environment.ExitCode = 1;
-                        return true;
+                        if (string.IsNullOrWhiteSpace(erpBaseUrl) || string.IsNullOrWhiteSpace(erpApiKey) || string.IsNullOrWhiteSpace(erpApiSecret))
+                        {
+                            Console.Error.WriteLine("ERROR: ERPNext credentials are required. Use --erp-base, --erp-key, and --erp-secret or configure them in the app.");
+                            Environment.ExitCode = 1;
+                            return true;
+                        }
+
+                        if (!quiet)
+                        {
+                            Console.WriteLine("Starting ERPNext upload...");
+                        }
+
+                        try
+                        {
+                            var summary = RunErpNextUpload(result.Leads, new ErpNextUploadOptions(erpBaseUrl!, erpApiKey!, erpApiSecret!)
+                            {
+                                UploadTimestamp = DateTime.Now
+                            }, quiet ? null : (Action<string>)(m => Console.WriteLine($"{DateTime.Now:HH:mm:ss}  {m}")));
+
+                            if (summary.Failed > 0)
+                            {
+                                exitCode = Math.Max(exitCode, 2);
+                            }
+                        }
+                        catch (Exception uploadEx)
+                        {
+                            Console.Error.WriteLine("ERROR during ERPNext upload: " + uploadEx.Message);
+                            LogRouter.LogException(uploadEx, "ERROR during ERPNext upload");
+                            Environment.ExitCode = 1;
+                            return true;
+                        }
                     }
                 }
 
@@ -369,6 +430,72 @@ namespace BirthdayExtractor
             return ErpNextUploader.UploadAsync(leads, options, logger, CancellationToken.None).GetAwaiter().GetResult();
         }
 
+        private static string WriteErpNextDryRunFile(IReadOnlyList<ExtractedLead> leads, DateTime timestamp, out int included, out int missingBusinessKey, out int missingRequired)
+        {
+            if (leads is null) throw new ArgumentNullException(nameof(leads));
+
+            missingBusinessKey = 0;
+            missingRequired = 0;
+            var payloads = new List<Dictionary<string, object?>>();
+
+            foreach (var lead in leads.Where(l => l is not null))
+            {
+                if (string.IsNullOrWhiteSpace(lead!.BusinessKey))
+                {
+                    missingBusinessKey++;
+                    continue;
+                }
+
+                var missingFields = ErpNextClient.GetMissingRequiredFields(lead);
+                if (missingFields.Count > 0)
+                {
+                    missingRequired++;
+                    continue;
+                }
+
+                payloads.Add(ErpNextClient.BuildLeadPayload(lead, timestamp));
+            }
+
+            included = payloads.Count;
+
+            var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (string.IsNullOrWhiteSpace(documentsPath) || !Directory.Exists(documentsPath))
+            {
+                documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            }
+            if (string.IsNullOrWhiteSpace(documentsPath) || !Directory.Exists(documentsPath))
+            {
+                documentsPath = Environment.CurrentDirectory;
+            }
+
+            var targetDirectory = Path.Combine(documentsPath, "BirthdayExtractor");
+            Directory.CreateDirectory(targetDirectory);
+
+            var fileName = $"erpnext-dryrun-{timestamp:yyyyMMdd-HHmmss}.json";
+            var fullPath = Path.Combine(targetDirectory, fileName);
+
+            var manifest = new
+            {
+                GeneratedAt = timestamp,
+                TotalLeads = leads.Count,
+                Included = payloads,
+                SkippedMissingBusinessKey = missingBusinessKey,
+                SkippedMissingRequiredFields = missingRequired
+            };
+
+            var jsonOptions = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+
+            var json = JsonSerializer.Serialize(manifest, jsonOptions);
+            File.WriteAllText(fullPath, json);
+
+            return fullPath;
+        }
+
         private static bool TryParseDate(string? text, out DateTime value)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -455,6 +582,7 @@ namespace BirthdayExtractor
             Console.WriteLine("  --quiet                 Suppress console logging");
             Console.WriteLine("  --erpnext               Upload results directly to ERPNext");
             Console.WriteLine("  --no-erpnext            Skip ERPNext upload (overrides --erpnext)");
+            Console.WriteLine("  --dryrun                With --erpnext, write ERP payload JSON to Documents instead of uploading");
             Console.WriteLine("  --erp-base <url>        Override ERPNext base URL");
             Console.WriteLine("  --erp-key <value>       Override ERPNext API key");
             Console.WriteLine("  --erp-secret <value>    Override ERPNext API secret");

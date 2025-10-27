@@ -188,7 +188,7 @@ namespace BirthdayExtractor
         /// <summary>
         /// Constructs the JSON payload for creating a new ERPNext Lead from an ExtractedLead object.
         /// </summary>
-        private static Dictionary<string, object?> BuildLeadPayload(ExtractedLead lead, DateTime now)
+        internal static Dictionary<string, object?> BuildLeadPayload(ExtractedLead lead, DateTime now)
         {
             var (parentFirst, parentLast) = ResolveGuardianNames(lead);
             var childName = string.Join(" ", new[] { lead.ChildFirstName, lead.ChildLastName }
