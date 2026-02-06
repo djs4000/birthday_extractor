@@ -1,0 +1,1 @@
+& "D:\Documents\Code Projects\Birthday_Extractor\Birthday_Extractor.exe" "--silent" "--online" "--erpnext"  | Out-File -FilePath "D:\Documents\Code Projects\Birthday_Extractor\OutputFile.txt" -Encoding UTF8
